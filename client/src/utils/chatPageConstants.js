@@ -1,0 +1,7 @@
+export const NEW_CHAT_SEARCH_DEBOUNCE_MS = 300;
+export const MOBILE_CLOSE_ANIMATION_MS = 340;
+export const UPLOAD_PROGRESS_HIDE_DELAY_MS = 600;
+export const NOTIFICATION_PREVIEW_MAX_CHARS = 120;
+export const NOTIFICATIONS_ENABLED_KEY = "chakavak-notify-enabled";
+export const NOTIFICATION_MESSAGE_PREVIEW_KEY = "chakavak-notify-message-preview";
+export const OPEN_CHAT_ID_KEY = "chakavak-open-chat-id";

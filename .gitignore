@@ -1,0 +1,45 @@
+﻿# Node
+node_modules/
+coverage/
+**/coverage/
+**/.vitest/
+
+# Client build
+client/dist/
+
+# Server build / data
+server/node_modules/
+data/
+*.sqlite
+
+# Vite cache
+.vite/
+
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# Env
+.env
+.env.local
+
+# Logs
+logs/
+
+# OS/editor
+.DS_Store
+.todo
+.vscode/
+.kiro/
+.continue/
+.idea/
+
+# TLS certs
+certs/
+
+# Tools
+graphify-out/
+.opencode/
+.agents/
+paseo.json
+skills-lock.json
