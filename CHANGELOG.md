@@ -1,3 +1,8 @@
+## 0.20.1 - 2026-11-05
+
+### Bug Fixes
+- **Mobile Video Call Controls Layout**: Redesigned bottom call controls into a clean, ergonomic two-tier layout separating primary call actions (Mic, Camera, Speaker, End Call) from secondary video tools (Flip Camera, AI Background Blur, Screen Share, Layout Mode) preventing single-row overflow and overlapping on mobile screens.
+
 ## 0.20.0 - 2026-11-05
 
 ### Added

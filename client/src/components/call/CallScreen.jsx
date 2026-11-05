@@ -446,84 +446,119 @@ export const CallScreen = memo(function CallScreen({
     ? "opacity-40 cursor-not-allowed"
     : "cursor-pointer";
 
+  const btnBaseClass = "flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full transition-all duration-200 shadow-md shrink-0";
+
   const endButton = (
     <button
       type="button"
       onClick={onEnd}
       disabled={isEnding}
-      className={`flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30 transition hover:bg-red-400 ${controlState}`}
+      className={`flex h-13 w-13 sm:h-15 sm:w-15 items-center justify-center rounded-full bg-red-500 text-white shadow-xl shadow-red-500/40 transition hover:bg-red-400 active:scale-95 ${controlState}`}
       aria-label="End call"
     >
-      <Phone size={26} className="rotate-[135deg]" />
+      <Phone size={24} className="rotate-[135deg]" />
     </button>
   );
-  const secondaryControls = (
-    <>
-      <button
-        type="button"
-        onClick={onToggleSpeaker}
-        disabled={isEnding}
-        className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
-          isSpeakerOn
-            ? "bg-white/10 text-white hover:bg-white/20"
-            : "bg-white text-gray-500 hover:bg-white/90"
-        }`}
-        aria-label={isSpeakerOn ? "Turn speaker off" : "Turn speaker on"}
-      >
-        {isSpeakerOn ? <Volume2 size={26} /> : <VolumeX size={26} />}
-      </button>
 
-      <button
-        type="button"
-        onClick={onToggleCamera}
-        disabled={isEnding || cameraUnavailable}
-        className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
-          isCameraOff
-            ? "bg-white text-gray-500 hover:bg-white/90"
-            : "bg-white/10 text-white hover:bg-white/20"
-        } ${cameraUnavailable ? "opacity-40 cursor-not-allowed" : ""}`}
-        aria-disabled={cameraUnavailable || undefined}
-        aria-label={isCameraOff ? "Turn camera on" : "Turn camera off"}
-      >
-        {isCameraOff ? <VideoOff size={26} /> : <Video size={26} />}
-      </button>
+  const mainControlsRow = (
+    <div className="flex items-center justify-center gap-3 sm:gap-4 max-w-full px-2">
+      {/* Microphone Mute */}
+      <Tooltip label={isMuted ? "Unmute / وصل صدا" : "Mute / قطع صدا"}>
+        <button
+          type="button"
+          onClick={onToggleMute}
+          disabled={isEnding}
+          className={`${btnBaseClass} ${controlState} ${
+            isMuted
+              ? "bg-white text-gray-800 shadow-white/20 active:scale-95"
+              : "bg-white/15 text-white hover:bg-white/25 active:scale-95"
+          }`}
+          aria-label={isMuted ? "Unmute" : "Mute"}
+        >
+          {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+        </button>
+      </Tooltip>
 
-      {isConnected && isVideo && !isCameraOff && onFlipCamera ? (
-        <Tooltip label="Flip camera / چرخش دوربین">
+      {/* Video Camera Toggle */}
+      <Tooltip label={isCameraOff ? "روشن کردن دوربین" : "خاموش کردن دوربین"}>
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          disabled={isEnding || cameraUnavailable}
+          className={`${btnBaseClass} ${controlState} ${
+            isCameraOff
+              ? "bg-white text-gray-800 shadow-white/20 active:scale-95"
+              : "bg-white/15 text-white hover:bg-white/25 active:scale-95"
+          } ${cameraUnavailable ? "opacity-40 cursor-not-allowed" : ""}`}
+          aria-disabled={cameraUnavailable || undefined}
+          aria-label={isCameraOff ? "Turn camera on" : "Turn camera off"}
+        >
+          {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
+        </button>
+      </Tooltip>
+
+      {/* Speaker Toggle */}
+      <Tooltip label={isSpeakerOn ? "خاموش کردن بلندگو" : "روشن کردن بلندگو"}>
+        <button
+          type="button"
+          onClick={onToggleSpeaker}
+          disabled={isEnding}
+          className={`${btnBaseClass} ${controlState} ${
+            isSpeakerOn
+              ? "bg-white/15 text-white hover:bg-white/25 active:scale-95"
+              : "bg-white text-gray-800 shadow-white/20 active:scale-95"
+          }`}
+          aria-label={isSpeakerOn ? "Turn speaker off" : "Turn speaker on"}
+        >
+          {isSpeakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
+        </button>
+      </Tooltip>
+
+      {/* Red End Call Button in same row or centered */}
+      {endButton}
+    </div>
+  );
+
+  const extraToolsRow = isConnected && isVideo ? (
+    <div className="flex items-center justify-center gap-2.5 sm:gap-3 p-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 max-w-[95vw] overflow-x-auto">
+      {/* Flip camera */}
+      {!isCameraOff && onFlipCamera ? (
+        <Tooltip label="چرخش دوربین / Flip camera">
           <button
             type="button"
             onClick={onFlipCamera}
             disabled={isEnding}
-            className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} bg-white/10 text-white hover:bg-white/20`}
+            className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/10 text-white/90 hover:bg-white/20 transition active:scale-95"
             aria-label="Flip camera"
           >
-            <RotateCcw size={24} />
+            <RotateCcw size={18} />
           </button>
         </Tooltip>
       ) : null}
 
-      {isConnected && isVideo && !isCameraOff && onSetVirtualBackground ? (
+      {/* AI Background Effects */}
+      {!isCameraOff && onSetVirtualBackground ? (
         <div className="relative">
-          <Tooltip label="افکت پس‌زمینه / Background Effects">
+          <Tooltip label="افکت پس‌زمینه (هوش مصنوعی)">
             <button
               type="button"
               onClick={() => setBgMenuOpen((prev) => !prev)}
               disabled={isEnding}
-              className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
+              className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full transition active:scale-95 ${
                 backgroundEffect !== "none"
                   ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
-                  : "bg-white/10 text-white hover:bg-white/20"
+                  : "bg-white/10 text-white/90 hover:bg-white/20"
               }`}
               aria-label="Background effects"
             >
-              <Sparkles size={24} />
+              <Sparkles size={18} />
             </button>
           </Tooltip>
 
           {bgMenuOpen ? (
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 p-3 bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl backdrop-blur-xl min-w-[210px] text-xs text-white">
+            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-1.5 p-2.5 bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl backdrop-blur-xl min-w-[200px] text-xs text-white">
               <span className="font-bold text-center text-white/70 pb-1 border-b border-white/10">
-                افکت پس‌زمینه (هوش مصنوعی)
+                افکت پس‌زمینه هوش مصنوعی
               </span>
               <button
                 type="button"
@@ -531,7 +566,7 @@ export const CallScreen = memo(function CallScreen({
                   onSetVirtualBackground("none");
                   setBgMenuOpen(false);
                 }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl transition ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "none" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
                 }`}
               >
@@ -544,7 +579,7 @@ export const CallScreen = memo(function CallScreen({
                   onSetVirtualBackground("blur");
                   setBgMenuOpen(false);
                 }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl transition ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "blur" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
                 }`}
               >
@@ -557,7 +592,7 @@ export const CallScreen = memo(function CallScreen({
                   onSetVirtualBackground("deep-blur");
                   setBgMenuOpen(false);
                 }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl transition ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "deep-blur" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
                 }`}
               >
@@ -569,57 +604,45 @@ export const CallScreen = memo(function CallScreen({
         </div>
       ) : null}
 
-      {isConnected && onToggleScreenShare ? (
-        <Tooltip label={isScreenSharing ? "Stop sharing / توقف اشتراک" : "Share screen / اشتراک صفحه"}>
+      {/* Screen Sharing */}
+      {onToggleScreenShare ? (
+        <Tooltip label={isScreenSharing ? "توقف اشتراک صفحه" : "اشتراک صفحه نمایش"}>
           <button
             type="button"
             onClick={onToggleScreenShare}
             disabled={isEnding}
-            className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
+            className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full transition active:scale-95 ${
               isScreenSharing
                 ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
-                : "bg-white/10 text-white hover:bg-white/20"
+                : "bg-white/10 text-white/90 hover:bg-white/20"
             }`}
             aria-label="Share screen"
           >
-            <MonitorUp size={24} />
+            <MonitorUp size={18} />
           </button>
         </Tooltip>
       ) : null}
 
-      {isConnected && isVideo && bothOn ? (
-        <Tooltip label={layoutMode === "split" ? "PiP mode / تصویر در تصویر" : "Split mode / کنار هم"}>
+      {/* Layout Split/PiP Mode */}
+      {bothOn ? (
+        <Tooltip label={layoutMode === "split" ? "نمای تصویر در تصویر (PiP)" : "نمای نصف صفحه (Split)"}>
           <button
             type="button"
             onClick={() => setLayoutMode((prev) => (prev === "pip" ? "split" : "pip"))}
             disabled={isEnding}
-            className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
+            className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full transition active:scale-95 ${
               layoutMode === "split"
                 ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
-                : "bg-white/10 text-white hover:bg-white/20"
+                : "bg-white/10 text-white/90 hover:bg-white/20"
             }`}
             aria-label="Toggle layout mode"
           >
-            <LayoutGrid size={24} />
+            <LayoutGrid size={18} />
           </button>
         </Tooltip>
       ) : null}
-
-      <button
-        type="button"
-        onClick={onToggleMute}
-        disabled={isEnding}
-        className={`flex h-16 w-16 items-center justify-center rounded-full transition ${controlState} ${
-          isMuted
-            ? "bg-white text-gray-500 hover:bg-white/90"
-            : "bg-white/10 text-white hover:bg-white/20"
-        }`}
-        aria-label={isMuted ? "Unmute" : "Mute"}
-      >
-        {isMuted ? <MicOff size={26} /> : <Mic size={26} />}
-      </button>
-    </>
-  );
+    </div>
+  ) : null;
 
   return createPortal(
     minimized && !isEnding ? (
@@ -983,19 +1006,15 @@ export const CallScreen = memo(function CallScreen({
               <Phone size={26} className="rotate-[135deg]" />
             </button>
           </div>
-        ) : callState === "connected" && !isMobileViewport ? (
-          /* Desktop: all four controls in one row, End call to the right */
-          <div className="flex items-center gap-6">
-            {secondaryControls}
-            {endButton}
+        ) : isConnected ? (
+          <div className="flex flex-col items-center gap-3 w-full px-4">
+            {extraToolsRow}
+            {mainControlsRow}
           </div>
         ) : (
-          <>
-            {isConnected ? (
-              <div className="flex items-center gap-6">{secondaryControls}</div>
-            ) : null}
+          <div className="flex items-center justify-center">
             {endButton}
-          </>
+          </div>
         )}
       </div>
       </div>

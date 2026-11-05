@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chakavak-deploy-version: 0.20.0
+# chakavak-deploy-version: 0.20.1
 
 set -uo pipefail
 
