@@ -14,7 +14,9 @@ import {
   Copy,
   Ghost,
   LoaderCircle,
+  Lock,
   Phone,
+  Radio,
   Search,
   Sparkles,
   Video,
@@ -76,6 +78,17 @@ export default function ChatWindowPanel({
   loadingOlderMessages,
   hasOlderMessages,
   handleSend,
+  onSendSticker,
+  onSendGif,
+  onScheduleMessage,
+  scheduledCount = 0,
+  onOpenScheduledList,
+  onOpenSafetyNumbers,
+  activeVoiceStage = null,
+  isConnectedToVoiceStage = false,
+  onStartVoiceStage,
+  onJoinVoiceStage,
+  onOpenVoiceStage,
   userScrolledUp,
   isAtBottom = false,
   unreadInChat,
@@ -102,6 +115,10 @@ export default function ChatWindowPanel({
   editTarget,
   onClearEdit,
   onReplyToMessage,
+  onReactToMessage,
+  onVotePoll,
+  onClosePoll,
+  onOpenPollModal,
   onOpenHeaderProfile,
   onOpenMessageSenderProfile,
   onOpenMention,
@@ -1164,6 +1181,9 @@ export default function ChatWindowPanel({
       isDesktop={isDesktop}
       isMobileTouchDevice={isMobileTouchDevice}
       onReply={onReplyToMessage}
+      onReact={onReactToMessage}
+      onVotePoll={onVotePoll}
+      onClosePoll={onClosePoll}
       canSwipeReply={canSwipeReply}
       isGroupChat={isGroupChat}
       isChannelChat={isChannelChat}
@@ -1410,6 +1430,27 @@ export default function ChatWindowPanel({
                       {Boolean(activeChat?.verified) && <VerifiedBadge size={17} />}
                       {!activeChat?.verified && Boolean(activeHeaderPeer?.user_verified) && <VerifiedBadge size={17} />}
                       <UserRoleBadge role={activeHeaderPeer?.user_role} size={17} />
+                      {activeChat?.type === "secret" && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenSafetyNumbers?.();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              onOpenSafetyNumbers?.();
+                            }
+                          }}
+                          className="mr-1 inline-flex items-center gap-1 rounded-full border border-emerald-300/60 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:border-emerald-500/40 dark:text-emerald-300 transition cursor-pointer"
+                          title="تأیید کد امنیتی E2EE"
+                        >
+                          <Lock size={12} className="text-emerald-600 dark:text-emerald-400" />
+                          <span>E2EE</span>
+                        </span>
+                      )}
                     </button>
                   </Tooltip>
                 ) : (
@@ -1724,6 +1765,15 @@ export default function ChatWindowPanel({
         />
       ) : null}
 
+      {activeVoiceStage ? (
+        <VoiceStageBanner
+          stage={activeVoiceStage}
+          isConnectedToThisStage={isConnectedToVoiceStage}
+          onJoin={onJoinVoiceStage}
+          onOpenStage={onOpenVoiceStage}
+        />
+      ) : null}
+
       <div
         className="relative flex-1 min-h-0 transition-colors duration-300"
         style={{
@@ -1805,6 +1855,11 @@ export default function ChatWindowPanel({
             activeChatId={activeChatId}
             isDesktop={isDesktop}
             handleSend={handleSend}
+            onSendSticker={onSendSticker}
+            onSendGif={onSendGif}
+            onScheduleMessage={onScheduleMessage}
+            scheduledCount={scheduledCount}
+            onOpenScheduledList={onOpenScheduledList}
             onComposerResize={handleComposerResize}
             replyTarget={replyTarget}
             currentUsername={user?.username}
@@ -1820,6 +1875,7 @@ export default function ChatWindowPanel({
             onClearPendingUploads={onClearPendingUploads}
             onRemovePendingUpload={onRemovePendingUpload}
             onUploadFilesSelected={onUploadFilesSelected}
+            onOpenPollModal={onOpenPollModal}
             onVoiceRecorded={onVoiceRecorded}
             onClearPendingVoiceMessage={onClearPendingVoiceMessage}
             uploadError={uploadError}

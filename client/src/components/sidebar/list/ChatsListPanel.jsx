@@ -4,6 +4,7 @@ import {
   Check,
   CheckCheck,
   Clock12,
+  Lock,
   File,
   Ghost,
   ImageIcon,
@@ -37,6 +38,7 @@ export default function ChatsListPanel({
   visibleChats,
   chatDrafts = {},
   archivedChatIds = [],
+  activeVoiceStageChatIds = [],
   user,
   editMode,
   activeChatId,
@@ -92,6 +94,9 @@ export default function ChatsListPanel({
       ? conv.last_message_files
       : [];
     const body = normalizePreviewText(conv.last_message).trim();
+    if (body.startsWith("e2ee:v1:")) {
+      return { icon: "lock", text: "🔒 پیام محرمانه" };
+    }
     if (!files.length) {
       const callLog = parseCallLogBody(body);
       if (callLog) {
@@ -160,7 +165,7 @@ export default function ChatsListPanel({
         return;
       }
       counts.all += unread;
-      if (c.type === "dm" || c.type === "saved") {
+      if (c.type === "dm" || c.type === "saved" || c.type === "secret") {
         counts.dm += unread;
       } else if (c.type === "group") {
         counts.group += unread;
@@ -178,7 +183,7 @@ export default function ChatsListPanel({
     const unarchived = (visibleChats || []).filter((c) => !archivedChatIds.includes(c.id));
     if (activeCategory === "all") return unarchived;
     if (activeCategory === "dm") {
-      return unarchived.filter((c) => c.type === "dm" || c.type === "saved");
+      return unarchived.filter((c) => c.type === "dm" || c.type === "saved" || c.type === "secret");
     }
     if (activeCategory === "group") {
       return unarchived.filter((c) => c.type === "group");
@@ -617,17 +622,19 @@ export default function ChatsListPanel({
       ) : !showSearchMode && sidebarChats.length ? (
         sidebarChats.map((conv, index) => {
           const members = conv.members || [];
+          const isDm = conv.type === "dm" || conv.type === "secret";
           const other =
-            conv.type === "dm"
+            isDm
               ? members.find(
                   (member) =>
                     String(member?.username || "").toLowerCase() !==
                     String(user?.username || "").toLowerCase(),
                 )
               : null;
-          const isDeletedDm = conv.type === "dm" && !other;
+          const isDeletedDm = isDm && !other;
+          const isSecret = conv.type === "secret";
           const showOnlineBadge =
-            conv.type === "dm" &&
+            isDm &&
             !isDeletedDm &&
             String(other?.status || "").toLowerCase() === "online";
           const isChannel = conv.type === "channel";
@@ -641,7 +648,7 @@ export default function ChatsListPanel({
                 String(member?.role || "").toLowerCase() === "owner",
             );
           const name =
-            conv.type === "dm"
+            isDm
               ? other?.nickname ||
                 other?.username ||
                 (isDeletedDm ? "Deleted account" : "Direct message")
@@ -717,6 +724,12 @@ export default function ChatsListPanel({
               <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="flex min-w-0 items-center gap-0.5 text-base font-semibold" dir="ltr">
+                    {activeVoiceStageChatIds?.includes(conv.id) && (
+                      <span className="flex h-2.5 w-2.5 relative mr-1 shrink-0" title="اتاق صوتی زنده در جریان است">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                      </span>
+                    )}
                     {isChannel ? (
                       <Megaphone
                         size={16}
@@ -724,6 +737,8 @@ export default function ChatsListPanel({
                       />
                     ) : isGroup ? (
                       <Users size={16} className="shrink-0 text-emerald-500" />
+                    ) : isSecret ? (
+                      <Lock size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                     ) : null}
                     <Tooltip label={name} asChild>
                       <span

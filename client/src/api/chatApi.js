@@ -145,12 +145,22 @@ export const deleteChats = (payload) =>
     body: JSON.stringify(payload),
   });
 
-export const createDmChat = ({ from, to }) =>
+export const createDmChat = ({ from, to, isSecret = false }) =>
   apiFetch(`${API_BASE}/api/chats/dm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
+    body: JSON.stringify({ from, to, isSecret: Boolean(isSecret) }),
   });
+
+export const publishChatE2eeKey = ({ chatId, publicKey }) =>
+  apiFetch(`${API_BASE}/api/e2ee/keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId, publicKey }),
+  });
+
+export const fetchChatE2eeKeys = (chatId) =>
+  apiFetch(`${API_BASE}/api/e2ee/keys/${chatId}`).then((res) => res.json());
 
 export const createGroupChat = (payload) =>
   apiFetch(`${API_BASE}/api/chats/group`, {
@@ -352,6 +362,48 @@ export const editMessage = (payload) =>
 
 export const deleteMessage = (payload) =>
   apiFetch(`${API_BASE}/api/messages/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const createPoll = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/polls/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const votePoll = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/polls/vote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const closePoll = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/polls/close`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const fetchLinkPreview = (url) =>
+  apiFetch(`${API_BASE}/api/messages/link-preview?url=${encodeURIComponent(url)}`);
+
+export const fetchGifs = ({ query = "", category = "", limit = 20 } = {}) => {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (category) params.set("category", category);
+  if (limit) params.set("limit", String(limit));
+  return apiFetch(`${API_BASE}/api/messages/gifs?${params.toString()}`);
+};
+
+export const fetchStickerPacks = () =>
+  apiFetch(`${API_BASE}/api/messages/stickers/packs`);
+
+export const reactToMessage = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/react`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -835,3 +887,44 @@ export const deleteCall = (payload) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+export const fetchActiveVoiceStages = () =>
+  apiFetch(`${API_BASE}/api/calls/stages/active`).then((res) => res.json());
+
+export const fetchChatVoiceStage = (chatId) =>
+  apiFetch(`${API_BASE}/api/calls/stage/${chatId}`).then((res) => res.json());
+
+export const startVoiceStage = ({ chatId, title }) =>
+  apiFetch(`${API_BASE}/api/calls/stage/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId, title }),
+  }).then((res) => res.json());
+
+export const joinVoiceStage = ({ chatId }) =>
+  apiFetch(`${API_BASE}/api/calls/stage/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId }),
+  }).then((res) => res.json());
+
+export const leaveVoiceStage = ({ chatId }) =>
+  apiFetch(`${API_BASE}/api/calls/stage/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId }),
+  }).then((res) => res.json());
+
+export const toggleVoiceStageRaiseHand = ({ chatId, raised }) =>
+  apiFetch(`${API_BASE}/api/calls/stage/raise-hand`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId, raised }),
+  }).then((res) => res.json());
+
+export const moderateVoiceStage = ({ chatId, targetUserId, isSpeaker, isMuted, action }) =>
+  apiFetch(`${API_BASE}/api/calls/stage/moderate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId, targetUserId, isSpeaker, isMuted, action }),
+  }).then((res) => res.json());

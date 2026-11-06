@@ -8,6 +8,7 @@ export function useActiveChatState({
   activeChatIdRef,
   activeChatTypeRef,
   activePeer,
+  chatFolder = 'all',
 }) {
   const activeId = activeChatId || null;
   useEffect(() => {
@@ -18,8 +19,19 @@ export function useActiveChatState({
     const query = String(chatsSearchQuery || "")
       .trim()
       .toLowerCase();
-    if (!query) return chats;
-    return chats.filter((chat) => {
+    let list = chats;
+    if (chatFolder && chatFolder !== "all") {
+      list = list.filter((chat) => {
+        const type = String(chat?.type || "").toLowerCase();
+        if (chatFolder === "personal") return type === "dm" || type === "saved" || type === "secret";
+        if (chatFolder === "groups") return type === "group";
+        if (chatFolder === "channels") return type === "channel";
+        return true;
+      });
+    }
+
+    if (!query) return list;
+    return list.filter((chat) => {
       const members = Array.isArray(chat?.members) ? chat.members : [];
       const chatType = String(chat?.type || "").toLowerCase();
       if (chatType === "group" || chatType === "channel") {
@@ -40,7 +52,7 @@ export function useActiveChatState({
       const username = String(other?.username || "").toLowerCase();
       return nickname.includes(query) || username.includes(query);
     });
-  }, [chats, chatsSearchQuery, user?.username]);
+  }, [chats, chatsSearchQuery, chatFolder, user?.username]);
 
   const activeChat =
     visibleChats.find((conv) => conv.id === activeId) ||

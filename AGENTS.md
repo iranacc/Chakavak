@@ -1,63 +1,135 @@
-# Repository Guidelines: Songbird
+# Repository Guidelines: چکاوک (Chakavak)
 
-Songbird is a self-hosted real-time communication platform built as a Node.js/React monorepo.
+چکاوک (سابقاً Songbird) یک پلتفرم پیام‌رسان و ارتباطی بلادرنگ سلف‌هاستد (Self-Hosted Real-Time Communication Platform) است که به صورت مونو‌ریپو با Node.js و React توسعه یافته است.
 
-## Workspace Architecture
+> [!IMPORTANT]
+> **قانون تغییرات و پایش مستندات (Mandatory Architecture & Rule Sync):**
+> هرگونه تغییر در ساختار، پیاده‌سازی قابلیت جدید، تغییر در معماری دیتابیس، ابزارهای مدیا، یا رفع باگ‌های حیاتی **باید بلافاصله و الزامی در این فایل (`AGENTS.md`) ثبت و به‌روزرسانی شود**. هیچ عاملی نباید بدون ثبت وضعیت جاری در این سند، توسعه را ادامه دهد تا نیازی به اسکن و حدس مکرر ساختار نباشد.
 
-- **`client/`**: React 19 SPA (Vite, Tailwind CSS 4, Vitest + Playwright).
-- **`server/`**: Node.js Express 5 backend (SSE realtime updates, in-memory SQLite via `sql.js`, Vitest + Supertest).
-- **`docs/`**: Dual-language VitePress documentation (English & Persian/Farsi).
+---
 
-## Essential Commands
+## ۱. ساختار مونو‌ریپو (Workspace Architecture)
+
+- **`client/`**: اپلیکیشن تک‌صفحه‌ای (SPA) با React 19، Vite، Tailwind CSS 4، و Vitest + Playwright.
+- **`server/`**: بک‌اند Express 5 بر پایه Node.js (پشتیبانی از SSE، Knex با SQLite/PostgreSQL، ورکر پردازش مدیا و صف صفوف صوتی/تصویری).
+- **`docs/`**: مستندات دوزبانه انگلیسی و فارسی بر پایه VitePress.
+
+---
+
+## ۲. قابلیت‌های محوری پیاده‌سازی‌شده (Implemented Feature Stack)
+
+برای پیشگیری از اشتباه در تخمین امکانات، موارد زیر **به طور کامل پیاده‌سازی و در کد موجود هستند**:
+
+1. **واکنش به پیام‌ها با ایموجی (Message Reactions)**:
+   - **پایگاه‌داده**: مایگریشن شماره ۴۲ (`server/migrations/042-message-reactions.js`) و توابع `addMessageReaction`, `removeMessageReaction`, `toggleMessageReaction`, `getMessageReactions` در [`server/db.js`](server/db.js).
+   - **اندپوینت و بلادرنگ**: روت `POST /api/messages/react` در [`server/api/messages.js`](server/api/messages.js) و انتشار بلادرنگ رویداد `message_reaction` از طریق SSE.
+   - **رابط کاربری کلاینت**: نوار ایموجی‌های سریع در منوی راست‌کلیک/نگه‌داشتن لمسی پیام، دکمه‌های کپسولی واکنش زیر حباب پیام در [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx)، شمارشگر واکنش‌ها و نمایش کاربرانی که واکنش داده‌اند، و مدیریت خوش‌بینانه وضعیت در [`ChatPage.jsx`](client/src/pages/ChatPage.jsx).
+
+2. **پیش‌نمایش غنی لینک‌ها (Rich Link Preview / OpenGraph)**:
+   - **بک‌اند خزشگر**: ماژول ایمن با فیلتر SSRF و محافظت از IPهای خصوصی در [`server/lib/linkPreview.js`](server/lib/linkPreview.js) همراه با کش درون‌حافظه‌ای یک‌ساعته و استخراج تگ‌های `og:title`, `og:description`, `og:image`, `og:site_name` یا تگ‌های پایه HTML.
+   - **اندپوینت**: روت `GET /api/messages/link-preview` در [`server/api/messages.js`](server/api/messages.js) و تابع `fetchLinkPreview` در [`client/src/api/chatApi.js`](client/src/api/chatApi.js).
+   - **رابط کاربری کلاینت**: کامپوننت [`LinkPreviewCard.jsx`](client/src/components/chat/messages/LinkPreviewCard.jsx) متصل به حباب‌های پیام در [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx) با کش کلاینت، تصویر شاخص بهینه، عنوان، خلاصه و نام سایت مبدأ.
+
+3. **پوشه‌بندی و تب‌بندی گفتگوها (Chat Folders)**:
+   - **رابط کاربری**: نوار تب‌های فیلتر پوشه‌ها در [`ChatFolderTabs.jsx`](client/src/components/sidebar/list/ChatFolderTabs.jsx) با دسته‌های: همه (`all`)، گفتگوهای شخصی (`personal`)، گروه‌ها (`groups`) و کانال‌ها (`channels`).
+   - **شمارشگر پیام‌های خوانده‌نشده**: بج (Badge) هوشمند تعداد پیام‌های ناخوانده مجزا به ازای هر پوشه.
+   - **پایداری وضعیت (Persistence)**: ذخیره‌سازی پوشه انتخاب‌شده کاربر در `localStorage` و ادغام روان با نوار فیلتر و جستجوی پیشرفته در [`ChatSidebar.jsx`](client/src/components/sidebar/layout/ChatSidebar.jsx) و [`useActiveChatState.js`](client/src/hooks/chat/useActiveChatState.js).
+
+4. **نظرسنجی و کوئیز (Polls & Quizzes)**:
+   - **پایگاه‌داده**: مایگریشن شماره ۴۳ (`server/migrations/043-polls.js`) شامل جداول `polls` و `poll_votes` و توابع `createPoll`, `getPollByMessageId`, `getPollsByMessageIds`, `votePoll`, `closePoll` در [`server/db.js`](server/db.js).
+   - **اندپوینت و بلادرنگ**: روت‌های `POST /api/messages/polls/create`، `POST /api/messages/polls/vote` و `POST /api/messages/polls/close` در [`server/api/messages.js`](server/api/messages.js) با انتشار لحظه‌ای رویدادهای `chat_message` و `poll_updated` از طریق SSE.
+   - **رابط کاربری کلاینت**: مدال ایجاد نظرسنجی/کوئیز در [`CreatePollModal.jsx`](client/src/components/modals/CreatePollModal.jsx) در منوی پیوست پیام‌ساز، کارت تعاملی نظرسنجی با نوار درصد پیشرفت و نمایش گزینه درست در کوئیز در [`PollCard.jsx`](client/src/components/chat/messages/PollCard.jsx) متصل به [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx).
+
+5. **مدیا و پیام‌های صوتی (Voice & Media Processing)**:
+   - **موج‌نگار صوتی و شتاب‌دهنده پخش**: [`MessageFiles.jsx`](client/src/components/chat/media/MessageFiles.jsx) شامل تبدیل فرکانس صوت با `AudioContext` به میله‌های فرکانسی (Waveform Peaks)، کش در `IndexedDB`، اسکراب صوتی و دکمه سرعت پخش (`1x / 1.5x / 2x`).
+   - **ویژوالایزر زنده هنگام ضبط**: کامپوننت [`WaveformVisualizer.jsx`](client/src/components/chat/messages/WaveformVisualizer.jsx) با انیمیشن موج‌های زنده هنگام ضبط ویس.
+   - **ویدیو مسیج دایره‌ای (Video Notes)**: کامپوننت اختصاصی پخش پیام‌های ویدیویی دایره‌ای با قابلیت پخش خودکار.
+   - **ترنسکد خودکار ویدیو (Video Transcoder)**: بک‌اند در [`server/lib/videoTranscode.js`](server/lib/videoTranscode.js) و [`server/lib/mediaWorker.js`](server/lib/mediaWorker.js) با ابزار `fluent-ffmpeg` ویدیوها را به استاندارد H.264 MP4 تبدیل و کش می‌کند.
+   - **رمزنگاری در وضعیت سکون (Encryption at Rest)**: با استفاده از کلید مشتق‌شده AES-256 در [`server/lib/storageEncryption.js`](server/lib/storageEncryption.js).
+
+6. **تماس‌های صوتی، تصویری و کنفرانس (Calls & Video Conferencing)**:
+   - **تماس نقطه به نقطه WebRTC (P2P Call)**: کنترل‌های دو سطحی و کامپکت بهینه‌شده برای موبایل و دسکتاپ در [`CallScreen.jsx`](client/src/components/call/CallScreen.jsx) و هوک [`useWebRTCCall.js`](client/src/hooks/chat/useWebRTCCall.js).
+   - **تار کردن و جلوه‌های پس‌زمینه ویدیو (MediaPipe Background Blur)**: پیاده‌سازی شده در [`client/src/utils/videoBackground.js`](client/src/utils/videoBackground.js) با استفاده از مدل آفلاین سلف‌هاست‌شده در `client/public/mediapipe/selfie_segmentation.js`.
+   - **کنفرانس ویدیویی گروهی (SFU)**: ماژول لایوکیت در [`GroupConferenceModal.jsx`](client/src/components/call/GroupConferenceModal.jsx).
+
+7. **ارتباط بلادرنگ و اعلان‌ها (Real-Time & Notifications)**:
+   - **Server-Sent Events (SSE)**: انتشار بلادرنگ رویدادها از طریق [`server/lib/sse.js`](server/lib/sse.js).
+   - **اعلان‌های پوش وب (Web Push via VAPID)**: ماژول اختصاصی در [`server/api/push.js`](server/api/push.js) و [`server/lib/vapid.js`](server/lib/vapid.js) متصل به Service Worker.
+   - **کانال‌های از راه دور (Remote Mirror Channels)**: پروتکل سینک و میرور کانال‌ها بین سرورها در [`server/lib/remoteChannels.js`](server/lib/remoteChannels.js).
+
+8. **پایگاه داده دوگانه (Database Architecture)**:
+   - **SQLite درون‌حافظه‌ای (`sql.js`)**: ذخیره‌سازی پیش‌فرض با قابلیت Debounce در ذخیره روی دیسک.
+   - **پشتیبانی از PostgreSQL**: قابلیت سوئیچ و اتصال مقیاس‌پذیر به دیتابیس Postgres با Knex در [`server/db/knex.js`](server/db/knex.js) و اسکریپت نگهداری [`postgresMaintenance.js`](server/lib/postgresMaintenance.js).
+
+9. **بسته‌های استیکر و موتور جستجوی گیف (Stickers & GIFs)**:
+   - **بک‌اند**: ماژول موتور جستجو با کش یک‌ساعته در [`server/lib/gifService.js`](server/lib/gifService.js)، اندپوینت‌های `GET /api/messages/gifs` و `GET /api/messages/stickers/packs` در [`server/api/messages.js`](server/api/messages.js)، شامل ۴ بسته استیکر رسمی چکاوک (Mascot, Kitties, Persian Calligraphy, Hype).
+   - **رابط کاربری کلاینت**: پاپ‌اوور سه‌حالته استیکر/گیف/ایموجی در [`EmojiPickerPopover.jsx`](client/src/components/chat/emoji/EmojiPickerPopover.jsx)، استیکرهای بدون حباب با ترنزیشن هاور [`StickerCard.jsx`](client/src/components/chat/messages/StickerCard.jsx)، کارت گیف با کنترل پخش [`GifCard.jsx`](client/src/components/chat/messages/GifCard.jsx).
+
+10. **پیام‌های زمان‌بندی‌شده و ارسال بی‌صدا (Scheduled & Silent Messages)**:
+   - **پایگاه داده**: مایگریشن شماره ۴۴ (`server/migrations/044-scheduled-and-silent-messages.js`)، ستون `is_silent` و جدول `scheduled_messages` در [`server/db.js`](server/db.js).
+   - **ورکر پس‌زمینه**: [`server/lib/scheduledMessagesWorker.js`](server/lib/scheduledMessagesWorker.js) با چرخه پایش زمان‌بندی و انتشار از طریق `messagePubService`.
+   - **رابط کاربری کلاینت**: مدال‌های [`ScheduleMessageModal.jsx`](client/src/components/modals/ScheduleMessageModal.jsx) و [`ScheduledMessagesListModal.jsx`](client/src/components/modals/ScheduledMessagesListModal.jsx)، کلیک راست و منوی ارسال در [`MessageComposer.jsx`](client/src/components/chat/messages/MessageComposer.jsx) و آیکون `BellOff` در [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx).
+
+11. **رمزنگاری سرتاسری و گفتگوی محرمانه (E2EE Secret Chats)**:
+   - **پروتکل رمزنگاری**: پیاده‌سازی کامل Web Crypto API بر پایه ECDH P-256 (secp256r1) برای تبادل کلید و AES-GCM 256-bit با IV تصادفی در [`client/src/utils/e2ee.js`](client/src/utils/e2ee.js) و [`client/src/utils/e2eeManager.js`](client/src/utils/e2eeManager.js).
+   - **پایگاه داده و بک‌اند**: مایگریشن شماره ۴۵ (`server/migrations/045-e2ee-keys.js`) برای جدول `chat_e2ee_keys`، توابع دیتابیس در [`server/db.js`](server/db.js)، مسیرهای اختصاصی `POST /api/e2ee/keys` و `GET /api/e2ee/keys/:chatId` در [`server/api/e2ee.js`](server/api/e2ee.js)، و پشتیبانی از ایجاد چت `type: "secret"` در [`server/api/chats.js`](server/api/chats.js).
+   - **کلاینت و رابط کاربری**: تاگل «گفتگوی محرمانه» در [`NewChatModal.jsx`](client/src/components/modals/NewChatModal.jsx)، مدال شماره‌های تأیید امنیت ۱۶ رقمی و اثر انگشت ایموجی در [`E2EESafetyNumberModal.jsx`](client/src/components/modals/E2EESafetyNumberModal.jsx)، آیکون‌های قفل سبز در هدر چت [`ChatWindowPanel.jsx`](client/src/components/chat/ChatWindowPanel.jsx) و لیست گفتگوها [`ChatsListPanel.jsx`](client/src/components/sidebar/list/ChatsListPanel.jsx)، و رمزگشایی خودکار پیام‌ها در [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx).
+
+---
+
+## ۳. کمبودها و نقشه راه توسعه (Backlog & Genuine Missing Gaps)
+
+موارد زیر هنوز در چکاوک پیاده‌سازی **نشده‌اند** و می‌توانند در نسخه‌های بعدی پیاده‌سازی شوند:
+
+- [x] ~~**واکنش به پیام‌ها با ایموجی (Message Reactions)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**پیش‌نمایش غنی لینک‌ها (Rich Link Preview / OpenGraph)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**پوشه‌بندی و تب‌بندی گفتگوها (Chat Folders)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**نظرسنجی و کوئیز (Polls & Quizzes)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**بسته‌های استیکر و جستجوی گیف (Stickers & Tenor/Giphy)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**پیام‌های زمان‌بندی‌شده و ارسال بی‌صدا (Scheduled & Silent Messages)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**رمزنگاری سرتاسری (E2EE Secret Chats)**~~ *(پیاده‌سازی شد)*
+- [x] ~~**اتاق‌های گفتگوی صوتی پیوسته (Voice Stages / Rooms)**~~ *(پیاده‌سازی شد)*
+
+---
+
+## ۴. دستورات ضروری (Essential Commands)
 
 ```bash
-# Development & Build
-npm run dev                  # Concurrent client + server dev servers
-npm --prefix client run dev  # Frontend dev server (Vite)
-npm --prefix server run dev  # Backend dev server (Node --watch)
-npm run build                # Build client frontend
+# توسعه و اجرا
+npm run dev                  # اجرای همزمان سرور و کلاینت
+npm --prefix client run dev  # اجرای سرور کلاینت (Vite)
+npm --prefix server run dev  # اجرای سرور بک‌اند (Node --watch)
+npm run build                # بیلد کلاینت برای پروداکشن
 
-# Testing
-npm test                     # Run client and server tests concurrently
-npm --prefix client run test # Client Vitest (unit + browser)
-npm --prefix client run test:unit    # Fast Node-only unit tests
-npm --prefix client run test:browser # Playwright browser component tests (Chromium + Firefox)
-npm --prefix server run test # Server Vitest (unit + Supertest API integration)
+# تست‌ها
+npm test                     # اجرای تمام تست‌های کلاینت و سرور
+npm --prefix client run test:unit    # تست‌های واحد سریع کلاینت
+npm --prefix client run test:browser # تست‌های کامپوننت با پلی‌رایت
+npm --prefix server run test # تست‌های یکپارچگی API سرور
 
-# Docs
-npm run docs:dev             # VitePress dev server
-npm run docs:build           # Build documentation site
+# مستندات
+npm run docs:dev             # اجرای سرور مستندات VitePress
+npm run docs:build           # بیلد مستندات
 ```
 
-## Critical Architecture Quirks & Pitfalls
+---
 
-- **Design & Styling (`DESIGN.md`)**: Respect and follow [`DESIGN.md`](./DESIGN.md) for all frontend styling, UI component design, typography, color system, accessibility, and UI patterns.
-- **Node Requirement**: Requires Node `>=24.18.0` and npm `>=11.18.0`.
-- **Database (`server/db.js`)**: `sql.js` runs in-memory with debounced disk persistence (`DB_SAVE_DEBOUNCE_MS`). All SQL queries **must** reside inside `server/db.js`. Never write inline SQL queries elsewhere.
-- **Server Test Isolation**: `server/db.js` and `server/index.js` initialize WASM and disk state on module load and **cannot** be imported in tests. Server API integration tests must use `makeApp` from `server/test/helpers/makeApp.js` to inject stubbed dependencies.
-- **Realtime SSE**: Real-time events are dispatched via `server/lib/sse.js` (`emitChatEvent`). API mutations must invoke SSE broadcast handlers to notify connected clients.
-- **Client Routing & API**: No React Router library. SPA navigation is managed manually in `client/src/App.jsx` via `window.history`. All client HTTP calls **must** use `apiFetch` in `client/src/api/chatApi.js` (`credentials: "include"`).
-- **Documentation Updates**: Any update to documentation under `docs/` must update both English (`docs/*.md`) and Persian (`docs/fa/*.md`) documents, matching the structure in `docs/.vitepress/config.mjs`. Call the `documentor` subagent to update docs when you implant a new feature.
+## ۵. نکات کلیدی معماری و محدودیت‌ها (Architecture Quirks & Pitfalls)
 
-## Development & Git Workflow
+- **طراحی و استایل (`DESIGN.md`)**: پیروی دقیق از تمام قوانین رنگ‌بندی، تایپوگرافی، پترن‌های UI و دسترس‌پذیری تعریف‌شده در [`DESIGN.md`](./DESIGN.md).
+- **نیازمندی محیط**: Node `>=24.18.0` و npm `>=11.18.0`.
+- **عملیات دیتابیس (`server/db.js`)**: تمام کوئری‌های SQL باید داخل متدهای [`server/db.js`](server/db.js) کپسوله شوند. هرگز کوئری مستقیم SQL در فایل‌های دیگر نوشته نشود.
+- **ایزوله‌سازی تست‌های سرور**: فایل‌های `server/db.js` و `server/index.js` در لود اولیه ماژول وضعیت WASM و دیسک را بارگذاری می‌کنند و نباید مستقیم در تست‌ها ایمپورت شوند؛ برای تست‌های ادغام سرور همواره از کمکی `makeApp` در `server/test/helpers/makeApp.js` استفاده شود.
+- **رویدادهای بلادرنگ**: هرگونه تغییر داده (Mutation) باید از طریق توابع انتشار در `server/lib/sse.js` ارسال شود.
+- **مسیریابی کلاینت**: از React Router استفاده نمی‌شود. کنترل تاریخچه و صفحات در [`client/src/App.jsx`](client/src/App.jsx) از طریق `window.history` مدیریت می‌شود.
+- **فراخوانی API در کلاینت**: تمام درخواست‌های HTTP کلاینت به سرور باید حتماً از طریق تابع `apiFetch` در [`client/src/api/chatApi.js`](client/src/api/chatApi.js) صورت گیرد تا `credentials: "include"` حفظ شود.
+- **به‌روزرسانی مستندات**: هر تغییری در مسیر `docs/` باید در هر دو نسخه انگلیسی (`docs/*.md`) و فارسی (`docs/fa/*.md`) اعمال شود.
 
-- **Git Execution**: **NEVER** run `git` commands automatically. Suggest a commit message in the format `type(scope): description` and let the user execute git operations.
-- **Bug Fixing Workflow**: Do not guess or fix immediately upon a bug report. First write a test reproducing the issue under test scenarios, verify it catches the bug, then apply the fix.
-- **Response Style**: Keep task completions concise. Do not generate unrequested markdown summary files.
+---
 
-## graphify
+## ۶. گردش‌کار گیت و توسعه (Development & Git Workflow)
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output. Always prefer graphify query commands over raw text grepping on graphify-out/.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-
-## Superpowers
-
-When using superpowers skills, create the plans or specs docs under `.superpowers/docs`.
+- **اجرای گیت**: **هرگز** دستورات `git` را به صورت خودکار اجرا نکنید. پیام کامیت استاندارد به فرمت `type(scope): description` پیشنهاد دهید تا کاربر خودش آن را اجرا کند.
+- **رفع باگ‌ها**: هرگز بدون سناریو و آزمون شروع به حدس زدن نکنید؛ ابتدا تستی بنویسید که باگ را بازتولید کند، سپس فیکس را پیاده و پاس شدن تست را تأیید کنید.
+- **سبک پاسخ‌دهی**: پاسخ‌ها کوتاه، فنی، دقیق و به زبان فارسی باشد.
+- **گراف دانش (Graphify)**: پس از اعمال تغییرات کد، از دستور `graphify update .` استفاده شود تا گراف دانش پروژه بدون هزینه به‌روز بماند.

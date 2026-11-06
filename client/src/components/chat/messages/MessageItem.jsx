@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  BellOff,
+  Lock,
   Check,
   CheckCheck,
   Clock12,
@@ -22,6 +24,12 @@ import { ChakavakIcon, TelegramIcon } from "../../../icons/BrandIcons.jsx";
 import { hasPersian } from "../../../utils/fontUtils.js";
 import { getAvatarInitials } from "../../../utils/avatarInitials.js";
 import { formatCompactCount, formatDayLabel } from "../../../utils/chatFormat.js";
+import { PollCard } from "./PollCard.jsx";
+import { StickerCard } from "./StickerCard.jsx";
+import { GifCard } from "./GifCard.jsx";
+import { parseSpecialMessage } from "../../../utils/specialMessage.js";
+import { LinkPreviewCard } from "./LinkPreviewCard.jsx";
+import { isE2eeCiphertext, decryptSecretMessage } from "../../../utils/e2eeManager.js";
 import ContextMenuSurface from "../../context-menu/ContextMenuSurface.jsx";
 import { MessageFiles } from "../media/MessageFiles.jsx";
 import {
@@ -143,6 +151,8 @@ const getMessageRenderSignature = (msg) => {
     getSystemEventSignature(msg?._systemEvent),
     getFileSignature(msg?.files),
     getFileSignature(msg?._files),
+    (Array.isArray(msg?.reactions) ? msg.reactions.map((r) => r.emoji + r.userId).sort().join(",") : ""),
+    msg?.poll ? (msg.poll.id + ":" + msg.poll.totalVoters + ":" + (msg.poll.isClosed ? 1 : 0) + ":" + (msg.poll.optionVotes || []).join(",")) : "",
   ].join("~~");
 };
 
@@ -172,6 +182,9 @@ export const MessageItem = memo(function MessageItem({
   forwardedUserStatus = null,
   mentionRefreshToken: _mentionRefreshToken = 0,
   onReply,
+  onReact,
+  onVotePoll,
+  onClosePoll,
   onForwardMessage,
   onJumpToMessage,
   onCallLogCall = null,
@@ -183,6 +196,35 @@ export const MessageItem = memo(function MessageItem({
   isOffline = false,
 }) {
   const isOwn = !isChannelChat && msg.username === user.username;
+  const currentUserId = user?.id;
+  const currentUsername = user?.username;
+
+  const reactionGroups = useMemo(() => {
+    const list = Array.isArray(msg?.reactions) ? msg.reactions : [];
+    if (!list.length) return [];
+    const map = new Map();
+    list.forEach((r) => {
+      const emoji = r.emoji;
+      if (!emoji) return;
+      if (!map.has(emoji)) {
+        map.set(emoji, {
+          emoji,
+          count: 0,
+          reactedByMe: false,
+          users: [],
+        });
+      }
+      const g = map.get(emoji);
+      g.count += 1;
+      const isMe = (currentUserId && r.userId === currentUserId) ||
+                   (currentUsername && r.username && r.username.toLowerCase() === currentUsername.toLowerCase());
+      if (isMe) g.reactedByMe = true;
+      if (r.nickname || r.username) {
+        g.users.push(r.nickname || r.username);
+      }
+    });
+    return Array.from(map.values());
+  }, [msg?.reactions, currentUserId, currentUsername]);
   const isRead = Boolean(msg.read_at) || isSavedChat;
   const isEdited = Boolean(Number(msg?.edited || 0) || msg?._edited);
   const deletedForwardOriginColor = "#94a3b8";
@@ -296,9 +338,31 @@ export const MessageItem = memo(function MessageItem({
     hasUploadInProgress ||
     Boolean(msg._processingPending);
   const isFailed = msg._delivery === "failed";
-  const bodyText = extractMessageBodyText(msg?.body);
+  const rawBody = msg?._decryptedBody || msg?._optimisticPlaintext || msg?.body;
+  const isE2ee = isE2eeCiphertext(rawBody);
+  const [decryptedE2eeBody, setDecryptedE2eeBody] = useState(() => {
+    if (!isE2ee) return null;
+    return msg?._decryptedBody || null;
+  });
+
+  useEffect(() => {
+    if (!isE2ee || decryptedE2eeBody) return;
+    let cancelled = false;
+    decryptSecretMessage(msg.chat_id || msg._chatId, rawBody).then((dec) => {
+      if (!cancelled && dec) setDecryptedE2eeBody(dec);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isE2ee, rawBody, msg.chat_id, msg._chatId, decryptedE2eeBody]);
+
+  const effectiveRawBody = decryptedE2eeBody || rawBody;
+  const bodyText = extractMessageBodyText(effectiveRawBody);
   const normalizedBodyText = String(bodyText || "").trim();
   const callLog = parseCallLogBody(normalizedBodyText);
+  const specialMsg = useMemo(() => parseSpecialMessage(normalizedBodyText), [normalizedBodyText]);
+  const isSticker = specialMsg?.type === "sticker";
+  const isGif = specialMsg?.type === "gif";
   const callLogLabel = callLog
     ? getCallLogLabel(callLog, Boolean(isOwn))
     : null;
@@ -1256,7 +1320,11 @@ export const MessageItem = memo(function MessageItem({
                   docFullWidth={isGroupChat && !isOwn && !isDesktop}
                   {...messageFilesProps}
                 />
-                {!shouldHideGeneratedFileBody ? (
+                {specialMsg?.type === "sticker" ? (
+                  <StickerCard sticker={specialMsg} isOwn={isOwn} />
+                ) : specialMsg?.type === "gif" ? (
+                  <GifCard gif={specialMsg} isOwn={isOwn} />
+                ) : !shouldHideGeneratedFileBody ? (
                   <div
                     ref={messageBodyRef}
                     dir="auto"
@@ -1270,29 +1338,19 @@ export const MessageItem = memo(function MessageItem({
                   />
                 ) : null}
                 {firstDetectedUrl && !callLogLabel && (
-                  <a
-                    href={firstDetectedUrl.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-2.5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-2.5 text-xs transition hover:bg-emerald-500/20 dark:border-emerald-500/20 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                      <Globe size={15} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300">
-                        <span className="truncate">{firstDetectedUrl.hostname}</span>
-                        <ExternalLink size={11} className="shrink-0 opacity-70" />
-                      </div>
-                      {firstDetectedUrl.pathname && firstDetectedUrl.pathname !== "/" && (
-                        <p className="truncate text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                          {firstDetectedUrl.pathname}
-                        </p>
-                      )}
-                    </div>
-                  </a>
+                  <LinkPreviewCard url={firstDetectedUrl.url} isOwn={isOwn} />
                 )}
+                {msg.poll ? (
+                  <PollCard
+                    poll={msg.poll}
+                    isOwn={isOwn}
+                    currentUserId={user?.id}
+                    onVote={onVotePoll}
+                    onClosePoll={onClosePoll}
+                    canClose={isOwn || user?.role === "admin" || user?.role === "owner"}
+                  />
+                ) : null}
+
                 {mentionDebugEnabled ? (
                   <div className="sb-mention-debug" aria-hidden="true">
                     @{mentionDebug?.active ?? 0}/{mentionDebug?.total ?? 0}
@@ -1300,6 +1358,21 @@ export const MessageItem = memo(function MessageItem({
                 ) : null}
                 <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>{msg._timeLabel || formatTime(msg.created_at)}</span>
+                  {msg.is_silent || msg._isSilent ? (
+                    <span title="ارسال‌شده بدون صدا" className="inline-flex items-center text-slate-400 dark:text-slate-500">
+                      <BellOff size={11} />
+                    </span>
+                  ) : null}
+                  {isE2ee ? (
+                    <span title="پیام رمزنگاری‌شده سرتاسری (E2EE)" className="inline-flex items-center text-emerald-600 dark:text-emerald-400">
+                      <Lock size={11} />
+                    </span>
+                  ) : null}
+                  {isE2ee ? (
+                    <span title="پیام رمزنگاری‌شده سرتاسری (E2EE)" className="inline-flex items-center text-emerald-600 dark:text-emerald-400">
+                      <Lock size={11} />
+                    </span>
+                  ) : null}
                   {isEdited ? <span>edited</span> : null}
                   {isStarred || msg?._starred ? (
                     <span title="Starred message / نشان‌شده" className="inline-flex items-center text-amber-500">
@@ -1322,7 +1395,9 @@ export const MessageItem = memo(function MessageItem({
                     : "w-fit max-w-[82%] sm:max-w-[86%] md:max-w-[80%]"
                   : "max-w-[82%] sm:max-w-[86%] md:max-w-[80%]"
               } ${
-                isOwn
+                isSticker
+                  ? "bg-transparent shadow-none px-1 py-1"
+                  : isOwn
                   ? "rounded-br-md bg-emerald-200 text-emerald-950 dark:bg-emerald-800 dark:text-white"
                   : "bg-white/90 text-slate-800 rounded-bl-md dark:bg-slate-800/75 dark:text-slate-100"
               }`}
@@ -1470,6 +1545,10 @@ export const MessageItem = memo(function MessageItem({
                     {callLogLabel}
                   </span>
                 </button>
+              ) : specialMsg?.type === "sticker" ? (
+                <StickerCard sticker={specialMsg} isOwn={isOwn} />
+              ) : specialMsg?.type === "gif" ? (
+                <GifCard gif={specialMsg} isOwn={isOwn} />
               ) : !shouldHideGeneratedFileBody ? (
                 <div
                   ref={messageBodyRef}
@@ -1484,28 +1563,7 @@ export const MessageItem = memo(function MessageItem({
                 />
               ) : null}
                 {firstDetectedUrl && !callLogLabel && (
-                  <a
-                    href={firstDetectedUrl.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-2.5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-2.5 text-xs transition hover:bg-emerald-500/20 dark:border-emerald-500/20 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                      <Globe size={15} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300">
-                        <span className="truncate">{firstDetectedUrl.hostname}</span>
-                        <ExternalLink size={11} className="shrink-0 opacity-70" />
-                      </div>
-                      {firstDetectedUrl.pathname && firstDetectedUrl.pathname !== "/" && (
-                        <p className="truncate text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                          {firstDetectedUrl.pathname}
-                        </p>
-                      )}
-                    </div>
-                  </a>
+                  <LinkPreviewCard url={firstDetectedUrl.url} isOwn={isOwn} />
                 )}
               {mentionDebugEnabled ? (
                 <div className="sb-mention-debug" aria-hidden="true">
@@ -1521,6 +1579,11 @@ export const MessageItem = memo(function MessageItem({
               >
                 <span className="inline-flex items-center gap-1">
                   <span>{msg._timeLabel || formatTime(msg.created_at)}</span>
+                  {msg.is_silent || msg._isSilent ? (
+                    <span title="ارسال‌شده بدون صدا" className="inline-flex items-center text-slate-400 dark:text-slate-500">
+                      <BellOff size={11} />
+                    </span>
+                  ) : null}
                   {isEdited ? <span>edited</span> : null}
                   {isStarred || msg?._starred ? (
                     <span title="Starred message / نشان‌شده" className="inline-flex items-center text-amber-500">
@@ -1600,6 +1663,39 @@ export const MessageItem = memo(function MessageItem({
                   </span>
                 ) : null}
               </div>
+              {reactionGroups.length > 0 ? (
+                <div
+                  className={`mt-1 flex flex-wrap items-center gap-1 select-none ${
+                    isOwn ? "justify-end" : "justify-start"
+                  }`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {reactionGroups.map((group) => {
+                    const tooltipText = group.users.slice(0, 5).join(", ") + (group.users.length > 5 ? "..." : "");
+                    return (
+                      <button
+                        key={group.emoji}
+                        type="button"
+                        title={tooltipText || undefined}
+                        onClick={() => onReact?.(msg, group.emoji)}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition active:scale-95 ${
+                          group.reactedByMe
+                            ? "border border-emerald-500/40 bg-emerald-100/80 text-emerald-900 shadow-xs dark:border-emerald-400/30 dark:bg-emerald-950/70 dark:text-emerald-200"
+                            : "border border-slate-200 bg-white/80 text-slate-700 shadow-2xs hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                        }`}
+                      >
+                        <span className="text-sm leading-none">{group.emoji}</span>
+                        {group.count > 1 ? (
+                          <span className="text-[11px] font-semibold leading-none">
+                            {group.count}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               {isChannelChat && typeof onForwardMessage === "function" ? (
                 <button
                   type="button"

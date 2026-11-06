@@ -99,6 +99,7 @@ export const CallScreen = memo(function CallScreen({
   isScreenSharing = false,
   onSetVirtualBackground = null,
   backgroundEffect = "none",
+  isBgProcessing = false,
   minimized: controlledMinimized,
   onMinimizeChange,
 }) {
@@ -543,22 +544,24 @@ export const CallScreen = memo(function CallScreen({
             <button
               type="button"
               onClick={() => setBgMenuOpen((prev) => !prev)}
-              disabled={isEnding}
+              disabled={isEnding || isBgProcessing}
               className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full transition active:scale-95 ${
-                backgroundEffect !== "none"
+                isBgProcessing
+                  ? "bg-amber-500 text-white animate-pulse"
+                  : backgroundEffect !== "none"
                   ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
                   : "bg-white/10 text-white/90 hover:bg-white/20"
               }`}
               aria-label="Background effects"
             >
-              <Sparkles size={18} />
+              <Sparkles size={18} className={isBgProcessing ? "animate-spin" : ""} />
             </button>
           </Tooltip>
 
           {bgMenuOpen ? (
             <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-1.5 p-2.5 bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl backdrop-blur-xl min-w-[200px] text-xs text-white">
-              <span className="font-bold text-center text-white/70 pb-1 border-b border-white/10">
-                افکت پس‌زمینه هوش مصنوعی
+              <span className="font-bold text-center text-white/70 pb-1 border-b border-white/10 flex items-center justify-center gap-1.5">
+                {isBgProcessing ? "در حال آماده‌سازی..." : "افکت پس‌زمینه هوش مصنوعی"}
               </span>
               <button
                 type="button"

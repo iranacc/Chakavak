@@ -14,6 +14,7 @@ import { registerRemoteMirrorRoutes } from "./remoteMirror.js";
 import { registerAdminPanelRoutes } from "./adminPanel.js";
 import { registerAdminRemoteChannelRoutes } from "./adminRemoteChannel.js";
 import { registerRemoteUploadRoutes } from "./uploadsRemote.js";
+import { registerE2eeRoutes } from "./e2ee.js";
 
 function registerApiRoutes(app, deps) {
   registerHealthRoutes(app, deps);
@@ -26,6 +27,7 @@ function registerApiRoutes(app, deps) {
   registerRemoteChannelTickRoutes(app, deps);
   registerRemoteMirrorRoutes(app, deps);
   registerMessageRoutes(app, deps);
+  registerE2eeRoutes(app, deps);
   registerRemoteUploadRoutes(app, deps);
   registerPushRoutes(app, deps);
   registerCallRoutes(app, deps);

@@ -1,4 +1,5 @@
 import { normalizeMessageBody } from "./chatCache.js";
+import { parseSpecialMessage } from "./specialMessage.js";
 
 export const truncateText = (text, maxChars) => {
   const value = String(text || "");
@@ -118,6 +119,15 @@ export const summarizeFiles = (files = [], uploadMode = "") => {
 export const resolveReplyPreview = (msg) => {
   if (!msg) return { text: "", icon: null };
   const rawBody = normalizeMessageBody(msg.body).trim();
+  const special = parseSpecialMessage(rawBody);
+  if (special) {
+    if (special.type === "sticker") {
+      return { text: `استیکر: ${special.title || special.emoji || "🎨"}`, icon: "image" };
+    }
+    if (special.type === "gif") {
+      return { text: "🎬 GIF", icon: "video" };
+    }
+  }
   const files = Array.isArray(msg.files)
     ? msg.files
     : Array.isArray(msg._files)

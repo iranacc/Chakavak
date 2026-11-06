@@ -22,6 +22,8 @@ import { createUploadTools } from "./lib/uploads.js";
 import { resolveAppOrigins, ensureBucketCors } from "./lib/bucketCors.js";
 import { resolveWebhookCallbackUrl } from "./lib/webhookUrl.js";
 import { createVideoTranscodeManager } from "./lib/videoTranscode.js";
+import { createScheduledMessagesWorker } from "./lib/scheduledMessagesWorker.js";
+import { createMessagePublicationService } from "./lib/services/messagePublicationService.js";
 import { createMessageFileJobs } from "./lib/messageFileJobs.js";
 import { createInspector } from "./lib/inspect.js";
 import { createSessionHelpers } from "./lib/sessions.js";
@@ -75,6 +77,21 @@ import {
   findUserById,
   findUserByUsername,
   getMessageReadCounts,
+  addMessageReaction,
+  removeMessageReaction,
+  toggleMessageReaction,
+  getMessageReactions,
+  createPoll,
+  getPollByMessageId,
+  getPollsByMessageIds,
+  votePoll,
+  closePoll,
+  createScheduledMessage,
+  getScheduledMessages,
+  getScheduledMessageById,
+  getDueScheduledMessages,
+  deleteScheduledMessage,
+  updateScheduledMessageTime,
   getMessageAuthors,
   getMessageReadByUser,
   getMessages,
@@ -102,6 +119,8 @@ import {
   searchUsers,
   searchPublicGroups,
   searchPublicChannels,
+  setChatE2eeKey,
+  getChatE2eeKeys,
   setChatMuted,
   touchSession,
   updateLastSeen,
@@ -912,6 +931,21 @@ const apiDeps = {
   fs,
   getCachedMembers,
   getMessageReadCounts,
+  addMessageReaction,
+  removeMessageReaction,
+  toggleMessageReaction,
+  getMessageReactions,
+  createPoll,
+  getPollByMessageId,
+  getPollsByMessageIds,
+  votePoll,
+  closePoll,
+  createScheduledMessage,
+  getScheduledMessages,
+  getScheduledMessageById,
+  getDueScheduledMessages,
+  deleteScheduledMessage,
+  updateScheduledMessageTime,
   getMessageAuthors,
   getMessageReadByUser,
   getMessages,
@@ -1430,6 +1464,30 @@ setImmediate(() => {
   }
 });
 remoteChannelManager.start();
+
+const messagePubService = createMessagePublicationService({
+  createOrReuseMessage,
+  createMessageFiles,
+  editMessage,
+  findChatById,
+  findMessageById,
+  listChatMembers,
+  listMutedUserIdsForChat,
+  markMessageRead,
+  setMessageExpiresAt,
+  setMessageForwardOrigin,
+});
+
+const scheduledWorker = createScheduledMessagesWorker({
+  getDueScheduledMessages,
+  deleteScheduledMessage,
+  messagePubService,
+  emitChatEvent,
+  findUserById,
+  isUserConnected: sseHub.isUserConnected,
+});
+scheduledWorker.start(5000);
+
 initAutoAddWorker({ db: { getAutoAddPublicChatIds, bulkAddMemberToChats, findUserById, findChatById, createMessage }, emitChatEvent });
 
 // Periodically purge old done/skipped/failed remote channel queue rows to

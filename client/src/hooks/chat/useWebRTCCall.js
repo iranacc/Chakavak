@@ -63,8 +63,10 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [facingMode, setFacingMode] = useState("user");
   const [backgroundEffect, setBackgroundEffect] = useState("none"); // "none" | "blur" | "deep-blur" | "image"
+  const [isBgProcessing, setIsBgProcessing] = useState(false);
   const bgPipelineRef = useRef(null);
   const rawVideoElementRef = useRef(null);
+  const rawCameraTrackRef = useRef(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const screenTrackRef = useRef(null);
   const [remoteStreamTick, setRemoteStreamTick] = useState(0);
@@ -169,7 +171,12 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     if (rawVideoElementRef.current) {
       rawVideoElementRef.current.pause();
       rawVideoElementRef.current.srcObject = null;
+      try { rawVideoElementRef.current.remove(); } catch (_) {}
       rawVideoElementRef.current = null;
+    }
+    if (rawCameraTrackRef.current) {
+      try { rawCameraTrackRef.current.stop(); } catch (_) {}
+      rawCameraTrackRef.current = null;
     }
     setBackgroundEffect("none");
     if (localStreamRef.current) {
@@ -255,6 +262,20 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         disconnectTimerRef.current = null;
       }
       // Stop capturing immediately; the notice is purely visual.
+      if (bgPipelineRef.current) {
+        bgPipelineRef.current.stop();
+        bgPipelineRef.current = null;
+      }
+      if (rawVideoElementRef.current) {
+        rawVideoElementRef.current.pause();
+        rawVideoElementRef.current.srcObject = null;
+        try { rawVideoElementRef.current.remove(); } catch (_) {}
+        rawVideoElementRef.current = null;
+      }
+      if (rawCameraTrackRef.current) {
+        try { rawCameraTrackRef.current.stop(); } catch (_) {}
+        rawCameraTrackRef.current = null;
+      }
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
@@ -382,6 +403,10 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
           type === "video",
         );
         localStreamRef.current = gotStream;
+        const [camTrack] = gotStream.getVideoTracks();
+        if (camTrack) {
+          rawCameraTrackRef.current = camTrack;
+        }
         // A video call started on a device without a usable camera joins
         // audio-only with the camera off.
         setIsCameraOff(!hasVideo);
@@ -489,6 +514,15 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     };
   }, [callState]);
 
+  // Pre-warm MediaPipe AI segmenter in the background when video call connects
+  useEffect(() => {
+    if (callState === "connected" && callType === "video" && !isCameraOff) {
+      import("../../utils/videoBackground.js")
+        .then((m) => m.getSelfieSegmenter())
+        .catch(() => {});
+    }
+  }, [callState, callType, isCameraOff]);
+
   // Accept incoming call (callee)
   const acceptCall = useCallback(async () => {
     const chatId = callChatIdRef.current;
@@ -500,6 +534,10 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         acceptedType === "video",
       );
       localStreamRef.current = stream;
+      const [camTrack] = stream.getVideoTracks();
+      if (camTrack) {
+        rawCameraTrackRef.current = camTrack;
+      }
       // Voice calls start with camera off; a video call without a usable
       // camera joins audio-only with the camera off.
       setIsCameraOff(!hasVideo);
@@ -582,6 +620,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         });
         const [videoTrack] = videoStream.getVideoTracks();
         if (!videoTrack) return;
+        rawCameraTrackRef.current = videoTrack;
         stream.addTrack(videoTrack);
         const pc = peerConnectionRef.current;
         if (pc && pc.signalingState !== "closed") {
@@ -636,21 +675,30 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       if (!newTrack) return;
 
       const [oldTrack] = stream.getVideoTracks();
-      if (oldTrack) {
-        stream.removeTrack(oldTrack);
-        oldTrack.stop();
-      }
-      stream.addTrack(newTrack);
+      rawCameraTrackRef.current = newTrack;
 
-      const pc = peerConnectionRef.current;
-      if (pc) {
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-        if (sender) {
-          await sender.replaceTrack(newTrack);
-        }
+      if (rawVideoElementRef.current) {
+        rawVideoElementRef.current.srcObject = new MediaStream([newTrack]);
+        void rawVideoElementRef.current.play().catch(() => {});
       }
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+
+      if (!bgPipelineRef.current) {
+        if (oldTrack) {
+          stream.removeTrack(oldTrack);
+          oldTrack.stop();
+        }
+        stream.addTrack(newTrack);
+
+        const pc = peerConnectionRef.current;
+        if (pc) {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+          if (sender) {
+            await sender.replaceTrack(newTrack);
+          }
+        }
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
       }
       setFacingMode(nextFacingMode);
     } catch (err) {
@@ -671,6 +719,13 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const [camTrack] = camStream.getVideoTracks();
+        if (camTrack) {
+          rawCameraTrackRef.current = camTrack;
+          if (bgPipelineRef.current && rawVideoElementRef.current) {
+            rawVideoElementRef.current.srcObject = new MediaStream([camTrack]);
+            void rawVideoElementRef.current.play().catch(() => {});
+          }
+        }
         if (stream) {
           const [oldTrack] = stream.getVideoTracks();
           if (oldTrack) {
@@ -706,6 +761,9 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         setIsScreenSharing(false);
         navigator.mediaDevices.getUserMedia({ video: true }).then((camStream) => {
           const [camTrack] = camStream.getVideoTracks();
+          if (camTrack) {
+            rawCameraTrackRef.current = camTrack;
+          }
           if (localStreamRef.current) {
             const [oldTrack] = localStreamRef.current.getVideoTracks();
             if (oldTrack) {
@@ -766,6 +824,16 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     const stream = localStreamRef.current;
     if (!pc || !stream) return;
 
+    let rawTrack = rawCameraTrackRef.current;
+    if (!rawTrack || rawTrack.readyState === "ended") {
+      const currentTracks = stream.getVideoTracks();
+      const currentTrack = currentTracks[0];
+      if (currentTrack && currentTrack.readyState !== "ended") {
+        rawTrack = currentTrack;
+        rawCameraTrackRef.current = rawTrack;
+      }
+    }
+
     if (effect === "none") {
       if (bgPipelineRef.current) {
         bgPipelineRef.current.stop();
@@ -774,44 +842,61 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       if (rawVideoElementRef.current) {
         rawVideoElementRef.current.pause();
         rawVideoElementRef.current.srcObject = null;
+        try { rawVideoElementRef.current.remove(); } catch (_) {}
         rawVideoElementRef.current = null;
       }
-      try {
-        const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const [camTrack] = camStream.getVideoTracks();
-        const [oldTrack] = stream.getVideoTracks();
-        if (oldTrack) {
-          stream.removeTrack(oldTrack);
-          oldTrack.stop();
-        }
-        if (camTrack) {
-          stream.addTrack(camTrack);
-          const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-          if (sender) {
-            await sender.replaceTrack(camTrack);
+
+      if (rawTrack && rawTrack.readyState !== "ended") {
+        const currentTracks = stream.getVideoTracks();
+        currentTracks.forEach((t) => {
+          if (t !== rawTrack) {
+            stream.removeTrack(t);
+            try { t.stop(); } catch (_) {}
           }
+        });
+        if (!stream.getVideoTracks().includes(rawTrack)) {
+          stream.addTrack(rawTrack);
+        }
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(rawTrack);
         }
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
-      } catch (err) {
-        console.warn("Could not revert background to raw camera:", err);
       }
       setBackgroundEffect("none");
       return;
     }
 
     try {
+      setIsBgProcessing(true);
+      if (!rawTrack || rawTrack.readyState === "ended") {
+        console.warn("No active camera track available for virtual background");
+        setIsBgProcessing(false);
+        return;
+      }
+
       const { createVirtualBackgroundPipeline } = await import("../../utils/videoBackground.js");
-      
+
       if (!rawVideoElementRef.current) {
-        const rawStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const rawVideo = document.createElement("video");
         rawVideo.autoplay = true;
         rawVideo.playsInline = true;
         rawVideo.muted = true;
-        rawVideo.srcObject = rawStream;
-        await rawVideo.play();
+        rawVideo.style.position = "fixed";
+        rawVideo.style.top = "0px";
+        rawVideo.style.left = "0px";
+        rawVideo.style.width = "320px";
+        rawVideo.style.height = "240px";
+        rawVideo.style.opacity = "0";
+        rawVideo.style.pointerEvents = "none";
+        rawVideo.style.zIndex = "-9999";
+        document.body.appendChild(rawVideo);
+        rawVideo.srcObject = new MediaStream([rawTrack]);
+        await rawVideo.play().catch((err) => {
+          console.warn("rawVideo play error:", err);
+        });
         rawVideoElementRef.current = rawVideo;
       }
 
@@ -826,13 +911,24 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       }
 
       const [processedTrack] = bgPipelineRef.current.outputStream.getVideoTracks();
-      if (!processedTrack) return;
-
-      const [oldTrack] = stream.getVideoTracks();
-      if (oldTrack) {
-        stream.removeTrack(oldTrack);
+      if (!processedTrack) {
+        setIsBgProcessing(false);
+        return;
       }
-      stream.addTrack(processedTrack);
+
+      const currentTracks = stream.getVideoTracks();
+      currentTracks.forEach((t) => {
+        if (t !== rawTrack && t !== processedTrack) {
+          stream.removeTrack(t);
+          try { t.stop(); } catch (_) {}
+        }
+      });
+      if (currentTracks.includes(rawTrack)) {
+        stream.removeTrack(rawTrack);
+      }
+      if (!stream.getVideoTracks().includes(processedTrack)) {
+        stream.addTrack(processedTrack);
+      }
 
       const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
       if (sender) {
@@ -844,6 +940,8 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       setBackgroundEffect(effect);
     } catch (err) {
       console.warn("Failed to apply virtual background:", err);
+    } finally {
+      setIsBgProcessing(false);
     }
   }, []);
 
@@ -1125,6 +1223,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     toggleScreenShare,
     isScreenSharing,
     backgroundEffect,
+    isBgProcessing,
     setVirtualBackground,
     handleSignal,
   };

@@ -1,3 +1,5 @@
+import { fetchLinkPreview } from "../lib/linkPreview.js";
+import { searchGifs, getStickerPacks } from "../lib/gifService.js";
 import rateLimit from "express-rate-limit";
 import { validateUuidParams, validateUuidBody } from "../lib/uuidMiddleware.js";
 import { createMessagePublicationService } from "../lib/services/messagePublicationService.js";
@@ -35,6 +37,20 @@ function registerMessageRoutes(app, deps) {
     hideMessageForEveryone,
     hideMessageForUser,
     getMessageReadCounts,
+    getMessageReactions,
+    createScheduledMessage,
+    getScheduledMessages,
+    getScheduledMessageById,
+    deleteScheduledMessage,
+    updateScheduledMessageTime,
+    createPoll,
+    getPollByMessageId,
+    getPollsByMessageIds,
+    votePoll,
+    closePoll,
+    addMessageReaction,
+    removeMessageReaction,
+    toggleMessageReaction,
     getMessageAuthors,
     getMessageReadByUser,
     getUploadKind,
@@ -496,6 +512,26 @@ function registerMessageRoutes(app, deps) {
         const isRemote = isRemoteChannelMessage(msg);
         const defaultCount = isRemote ? 0 : 1;
         msg.seenCount = Number(counts[id] || defaultCount);
+      });
+    }
+
+    if (messageIds.length && typeof getMessageReactions === "function") {
+      const rawReactions = getMessageReactions(messageIds);
+      const reactionsMap = (rawReactions && typeof rawReactions.then === "function" ? await rawReactions : rawReactions) || {};
+      enriched.forEach((msg) => {
+        if (msg?.id) {
+          msg.reactions = reactionsMap[msg.id] || [];
+        }
+      });
+    }
+
+    if (messageIds.length && typeof getPollsByMessageIds === "function") {
+      const rawPolls = getPollsByMessageIds(messageIds);
+      const pollsMap = (rawPolls && typeof rawPolls.then === "function" ? await rawPolls : rawPolls) || {};
+      enriched.forEach((msg) => {
+        if (msg?.id && pollsMap[msg.id]) {
+          msg.poll = pollsMap[msg.id];
+        }
       });
     }
 
@@ -1669,7 +1705,7 @@ function registerMessageRoutes(app, deps) {
     const session = await requireSession(req, res);
     if (!session) return;
 
-    const { chatId, username, body, replyToMessageId } = req.body || {};
+    const { chatId, username, body, replyToMessageId, isSilent } = req.body || {};
     const clientRequestIdRaw = String(req.body?.clientRequestId || "").trim();
     const clientRequestId = clientRequestIdRaw
       ? clientRequestIdRaw.slice(0, 120)
@@ -1743,6 +1779,7 @@ function registerMessageRoutes(app, deps) {
       clientRequestId,
       username: user.username,
       isUserConnectedFn: isUserConnected,
+      isSilent: Boolean(isSilent),
     });
     const result = rawResult && typeof rawResult.then === "function" ? await rawResult : rawResult;
 
@@ -2071,6 +2108,441 @@ function registerMessageRoutes(app, deps) {
 
     return res.json({ ok: true, ids: forwardedIds });
   });
+  app.post(
+    "/api/messages/react",
+    validateUuidBody([
+      { field: "chatId", required: true },
+      { field: "messageId", required: true },
+    ]),
+    async (req, res) => {
+      const user = await requireSession(req, res);
+      if (!user) return;
+
+      const { chatId, messageId, emoji } = req.body;
+      const cleanEmoji = String(emoji || "").trim();
+      if (!cleanEmoji) {
+        return res.status(400).json({ error: "Emoji is required." });
+      }
+
+      const rawChat = findChatById(chatId);
+      const chat = rawChat && typeof rawChat.then === "function" ? await rawChat : rawChat;
+      if (!chat) {
+        return res.status(404).json({ error: "Chat not found." });
+      }
+
+      if (!isMember(chatId, user.id)) {
+        return res.status(403).json({ error: "Forbidden: Not a member of this chat." });
+      }
+
+      const rawMsg = findMessageById(messageId);
+      const msg = rawMsg && typeof rawMsg.then === "function" ? await rawMsg : rawMsg;
+      if (!msg || String(msg.chat_id || "") !== String(chatId)) {
+        return res.status(404).json({ error: "Message not found in this chat." });
+      }
+
+      const result = toggleMessageReaction(messageId, user.id, cleanEmoji);
+      const rawReactions = getMessageReactions([messageId]);
+      const reactionsMap = (rawReactions && typeof rawReactions.then === "function" ? await rawReactions : rawReactions) || {};
+      const currentReactions = reactionsMap[messageId] || [];
+
+      emitChatEvent(chatId, {
+        type: "message_reaction",
+        chatId,
+        messageId,
+        userId: user.id,
+        username: user.username,
+        nickname: user.nickname,
+        emoji: cleanEmoji,
+        added: result.added,
+        reactions: currentReactions,
+      });
+
+      return res.json({
+        ok: true,
+        messageId,
+        added: result.added,
+        reactions: currentReactions,
+      });
+    }
+  );
+
+
+  app.post(
+    "/api/messages/polls/create",
+    validateUuidBody([{ field: "chatId", required: true }]),
+    async (req, res) => {
+      const user = await requireSession(req, res);
+      if (!user) return;
+
+      const {
+        chatId,
+        question,
+        options,
+        multipleChoice = false,
+        isAnonymous = false,
+        isQuiz = false,
+        correctOptionIndex = null,
+      } = req.body || {};
+
+      const cleanQuestion = String(question || "").trim();
+      const validOptions = (Array.isArray(options) ? options : [])
+        .map((opt) => String(opt || "").trim())
+        .filter(Boolean);
+
+      if (!cleanQuestion) {
+        return res.status(400).json({ error: "Poll question is required." });
+      }
+      if (validOptions.length < 2) {
+        return res.status(400).json({ error: "Poll must have at least 2 options." });
+      }
+
+      const rawChat = findChatById(chatId);
+      const chat = rawChat && typeof rawChat.then === "function" ? await rawChat : rawChat;
+      if (!chat) return res.status(404).json({ error: "Chat not found." });
+
+      if (!isMember(chatId, user.id)) {
+        return res.status(403).json({ error: "Forbidden: Not a member of this chat." });
+      }
+
+      // Create message for poll
+      const rawMsgId = createMessage(
+        chatId,
+        user.id,
+        cleanQuestion,
+        null,
+        null,
+      );
+      const messageId = rawMsgId && typeof rawMsgId.then === "function" ? await rawMsgId : rawMsgId;
+
+      const pollId = createPoll({
+        messageId,
+        chatId,
+        creatorId: user.id,
+        question: cleanQuestion,
+        options: validOptions,
+        multipleChoice: Boolean(multipleChoice),
+        isAnonymous: Boolean(isAnonymous),
+        isQuiz: Boolean(isQuiz),
+        correctOptionIndex: correctOptionIndex !== null ? Number(correctOptionIndex) : null,
+      });
+
+      const poll = getPollByMessageId(messageId);
+
+      emitChatEvent(chatId, {
+        type: "chat_message",
+        chatId,
+        messageId,
+        userId: user.id,
+        username: user.username,
+        nickname: user.nickname,
+        body: cleanQuestion,
+        poll,
+      });
+
+      return res.json({ ok: true, messageId, poll });
+    }
+  );
+
+  app.post(
+    "/api/messages/polls/vote",
+    validateUuidBody([
+      { field: "chatId", required: true },
+      { field: "pollId", required: true },
+    ]),
+    async (req, res) => {
+      const user = await requireSession(req, res);
+      if (!user) return;
+
+      const { chatId, pollId, optionIndexes } = req.body || {};
+
+      const rawChat = findChatById(chatId);
+      const chat = rawChat && typeof rawChat.then === "function" ? await rawChat : rawChat;
+      if (!chat) return res.status(404).json({ error: "Chat not found." });
+
+      if (!isMember(chatId, user.id)) {
+        return res.status(403).json({ error: "Forbidden: Not a member of this chat." });
+      }
+
+      const updatedPoll = votePoll(pollId, user.id, optionIndexes);
+      if (!updatedPoll) {
+        return res.status(400).json({ error: "Unable to record vote or poll is closed." });
+      }
+
+      emitChatEvent(chatId, {
+        type: "poll_updated",
+        chatId,
+        pollId,
+        messageId: updatedPoll.messageId,
+        poll: updatedPoll,
+      });
+
+      return res.json({ ok: true, poll: updatedPoll });
+    }
+  );
+
+  app.post(
+    "/api/messages/polls/close",
+    validateUuidBody([
+      { field: "chatId", required: true },
+      { field: "pollId", required: true },
+    ]),
+    async (req, res) => {
+      const user = await requireSession(req, res);
+      if (!user) return;
+
+      const { chatId, pollId } = req.body || {};
+
+      const rawChat = findChatById(chatId);
+      const chat = rawChat && typeof rawChat.then === "function" ? await rawChat : rawChat;
+      if (!chat) return res.status(404).json({ error: "Chat not found." });
+
+      if (!isMember(chatId, user.id)) {
+        return res.status(403).json({ error: "Forbidden: Not a member of this chat." });
+      }
+
+      const updatedPoll = closePoll(pollId, user.id);
+      if (!updatedPoll) {
+        return res.status(404).json({ error: "Poll not found." });
+      }
+
+      emitChatEvent(chatId, {
+        type: "poll_updated",
+        chatId,
+        pollId,
+        messageId: updatedPoll.messageId,
+        poll: updatedPoll,
+      });
+
+      return res.json({ ok: true, poll: updatedPoll });
+    }
+  );
+
+  app.get("/api/messages/link-preview", async (req, res) => {
+    const user = await requireSession(req, res);
+    if (!user) return;
+
+    const url = String(req.query.url || "").trim();
+    if (!url) {
+      return res.status(400).json({ error: "URL is required." });
+    }
+
+    try {
+      const preview = await fetchLinkPreview(url);
+      if (!preview) {
+        return res.status(404).json({ error: "Unable to extract preview." });
+      }
+      return res.json({ ok: true, preview });
+    } catch {
+      return res.status(500).json({ error: "Failed to fetch link preview." });
+    }
+  });
+
+  app.get("/api/messages/gifs", async (req, res) => {
+    const user = await requireSession(req, res);
+    if (!user) return;
+
+    const query = String(req.query.q || "").trim();
+    const category = String(req.query.category || "").trim();
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
+    try {
+      const gifs = await searchGifs({ query, category, limit });
+      return res.json({ ok: true, gifs });
+    } catch {
+      return res.status(500).json({ error: "Failed to search GIFs." });
+    }
+  });
+
+  app.get("/api/messages/stickers/packs", async (req, res) => {
+    const user = await requireSession(req, res);
+    if (!user) return;
+
+    try {
+      const packs = getStickerPacks();
+      return res.json({ ok: true, packs });
+    } catch {
+      return res.status(500).json({ error: "Failed to fetch sticker packs." });
+    }
+  });
+
+
+  app.post(
+    "/api/messages/schedule",
+    validateUuidBody([{ field: "chatId", required: true }, { field: "replyToMessageId", required: false }]),
+    async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+
+      const { chatId, body, scheduledAt, isSilent, replyToMessageId } = req.body || {};
+      if (!chatId || !body || !scheduledAt) {
+        return res.status(400).json({ error: "chatId, body, and scheduledAt are required." });
+      }
+
+      const scheduledDate = new Date(scheduledAt);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        return res.status(400).json({ error: "Invalid scheduledAt format." });
+      }
+
+      const rawIsMem = isMember(chatId, session.id);
+      const memberCheck = rawIsMem && typeof rawIsMem.then === "function" ? await rawIsMem : rawIsMem;
+      if (!memberCheck) {
+        return res.status(403).json({ error: "Not a member of this chat." });
+      }
+
+      const rawSched = createScheduledMessage({
+        chatId,
+        userId: session.id,
+        body: String(body),
+        scheduledAt: scheduledDate.toISOString(),
+        isSilent: Boolean(isSilent),
+        replyToMessageId: replyToMessageId || null,
+      });
+      const scheduledMessage = rawSched && typeof rawSched.then === "function" ? await rawSched : rawSched;
+
+      emitChatEvent(chatId, {
+        type: "scheduled_messages_updated",
+        chatId,
+        userId: session.id,
+      });
+
+      return res.json({ ok: true, scheduledMessage });
+    }
+  );
+
+  app.get(
+    "/api/messages/scheduled",
+    async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+
+      const chatId = String(req.query.chatId || "").trim();
+      if (!chatId) {
+        return res.status(400).json({ error: "chatId query parameter is required." });
+      }
+
+      const rawIsMem = isMember(chatId, session.id);
+      const memberCheck = rawIsMem && typeof rawIsMem.then === "function" ? await rawIsMem : rawIsMem;
+      if (!memberCheck) {
+        return res.status(403).json({ error: "Not a member of this chat." });
+      }
+
+      const rawSched = getScheduledMessages(chatId, session.id);
+      const scheduledMessages = rawSched && typeof rawSched.then === "function" ? await rawSched : rawSched;
+      return res.json({ ok: true, scheduledMessages });
+    }
+  );
+
+  app.post(
+    "/api/messages/scheduled/send-now",
+    validateUuidBody([{ field: "chatId", required: true }]),
+    async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+
+      const { chatId, scheduledMessageId } = req.body || {};
+      if (!chatId || !scheduledMessageId) {
+        return res.status(400).json({ error: "chatId and scheduledMessageId are required." });
+      }
+
+      const rawItem = getScheduledMessageById(scheduledMessageId);
+      const scheduledItem = rawItem && typeof rawItem.then === "function" ? await rawItem : rawItem;
+      if (!scheduledItem || scheduledItem.user_id !== session.id || scheduledItem.chat_id !== chatId) {
+        return res.status(404).json({ error: "Scheduled message not found." });
+      }
+
+      const rawResult = messagePubService.publishTextMessage({
+        chatId,
+        userId: session.id,
+        body: scheduledItem.body,
+        replyToMessageId: scheduledItem.reply_to_message_id,
+        isSilent: Boolean(scheduledItem.is_silent),
+        username: session.username,
+        isUserConnectedFn: isUserConnected,
+      });
+      const result = rawResult && typeof rawResult.then === "function" ? await rawResult : rawResult;
+
+      const rawDel = deleteScheduledMessage(scheduledMessageId, session.id);
+      if (rawDel && typeof rawDel.then === "function") await rawDel;
+
+      if (Array.isArray(result?.sseEvents)) {
+        result.sseEvents.forEach((ev) => {
+          emitChatEvent(ev.chatId, { ...ev.payload, is_silent: Boolean(scheduledItem.is_silent) });
+        });
+      }
+
+      emitChatEvent(chatId, {
+        type: "scheduled_messages_updated",
+        chatId,
+        userId: session.id,
+      });
+
+      return res.json({ ok: true, messageId: result.messageId });
+    }
+  );
+
+  app.post(
+    "/api/messages/scheduled/delete",
+    async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+
+      const { chatId, scheduledMessageId } = req.body || {};
+      if (!chatId || !scheduledMessageId) {
+        return res.status(400).json({ error: "chatId and scheduledMessageId are required." });
+      }
+
+      const rawDel = deleteScheduledMessage(scheduledMessageId, session.id);
+      const deleted = rawDel && typeof rawDel.then === "function" ? await rawDel : rawDel;
+      if (!deleted) {
+        return res.status(404).json({ error: "Scheduled message not found." });
+      }
+
+      if (chatId) {
+        emitChatEvent(chatId, {
+          type: "scheduled_messages_updated",
+          chatId,
+          userId: session.id,
+        });
+      }
+
+      return res.json({ ok: true });
+    }
+  );
+
+  app.post(
+    "/api/messages/scheduled/reschedule",
+    async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+
+      const { chatId, scheduledMessageId, scheduledAt } = req.body || {};
+      if (!chatId || !scheduledMessageId || !scheduledAt) {
+        return res.status(400).json({ error: "chatId, scheduledMessageId, and scheduledAt are required." });
+      }
+
+      const scheduledDate = new Date(scheduledAt);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        return res.status(400).json({ error: "Invalid scheduledAt format." });
+      }
+
+      const rawUp = updateScheduledMessageTime(scheduledMessageId, session.id, scheduledDate.toISOString());
+      const updated = rawUp && typeof rawUp.then === "function" ? await rawUp : rawUp;
+      if (!updated) {
+        return res.status(404).json({ error: "Scheduled message not found." });
+      }
+
+      if (chatId) {
+        emitChatEvent(chatId, {
+          type: "scheduled_messages_updated",
+          chatId,
+          userId: session.id,
+        });
+      }
+
+      return res.json({ ok: true });
+    }
+  );
+
 }
 
 export { registerMessageRoutes };

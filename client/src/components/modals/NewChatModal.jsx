@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useRef } from "react";
-import { Close } from "../../icons/lucide.js";
+import { Close, Lock } from "../../icons/lucide.js";
 import { hasPersian } from "../../utils/fontUtils.js";
 import { getAvatarInitials } from "../../utils/avatarInitials.js";
 import Avatar from "../common/Avatar.jsx";
@@ -22,6 +22,8 @@ export default function NewChatModal({
   canStartChat,
   startDirectMessage,
   onClose,
+  isSecretChat = false,
+  setIsSecretChat = () => {},
 }) {
   const dialogRef = useRef(null);
   useFocusTrap(dialogRef, open);
@@ -177,6 +179,21 @@ export default function NewChatModal({
             {newChatError}
           </p>
         ) : null}
+        <label className="mt-3 flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-50/50 p-3 dark:border-emerald-500/30 dark:bg-emerald-950/20 cursor-pointer select-none">
+          <div className="flex items-center gap-2.5">
+            <Lock size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="text-right">
+              <span className="block text-xs font-semibold text-slate-800 dark:text-slate-200">گفتگوی محرمانه (E2EE)</span>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">رمزنگاری سرتاسری مستقیم میان دو دستگاه</p>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={isSecretChat}
+            onChange={(e) => setIsSecretChat(e.target.checked)}
+            className="h-4 w-4 rounded accent-emerald-600 cursor-pointer shrink-0"
+          />
+        </label>
         <button
           type="button"
           onClick={startDirectMessage}

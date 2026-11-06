@@ -73,6 +73,7 @@ export function createMessagePublicationService(dbApi) {
     clientRequestId = null,
     username = "",
     isUserConnectedFn = null,
+    isSilent = false,
   }) {
     const rawChat = findChatById(chatId);
 
@@ -86,6 +87,7 @@ export function createMessagePublicationService(dbApi) {
         replyToMessageId,
         expiresAt,
         clientRequestId,
+        { isSilent },
       );
 
       const processCreated = (created) => {
@@ -124,6 +126,7 @@ export function createMessagePublicationService(dbApi) {
                   userId,
                   body,
                   replyToMessageId,
+                  is_silent: Boolean(isSilent),
                   ...(chat.type === "saved"
                     ? {
                         read_at: new Date().toISOString(),

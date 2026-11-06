@@ -4,6 +4,7 @@ import ChatWindowPanel from "../components/chat/ChatWindowPanel.jsx";
 import { CallScreen } from "../components/call/CallScreen.jsx";
 import { GroupConferenceModal } from "../components/call/GroupConferenceModal.jsx";
 import { ChatSidebar } from "../components/sidebar/index.js";
+import { CreatePollModal } from "../components/modals/CreatePollModal.jsx";
 import AppContextMenu from "../components/context-menu/AppContextMenu.jsx";
 import { useAppContextMenu } from "../components/context-menu/useAppContextMenu.js";
 import { CHAT_PAGE_CONFIG } from "../settings/chatPageConfig.js";
@@ -70,7 +71,22 @@ import {
 } from "../utils/messageOwnership.js";
 import { normalizeUuid, isValidUuid } from "../utils/uuidUtils.js";
 import {
+  getOrCreateChatKeyPair,
+  handlePeerPublicKey,
+  encryptSecretMessage,
+  getChatSecurityNumber,
+} from "../utils/e2eeManager.js";
+import {
   createDmChat,
+  fetchActiveVoiceStages,
+  fetchChatVoiceStage,
+  startVoiceStage,
+  joinVoiceStage,
+  leaveVoiceStage,
+  toggleVoiceStageRaiseHand,
+  moderateVoiceStage,
+  publishChatE2eeKey,
+  fetchChatE2eeKeys,
   discoverUsersAndGroups,
   createChannelChat,
   createGroupChat,
@@ -111,6 +127,10 @@ import {
   getSavedMessagesChat,
   fetchPushPublicKey,
   forwardMessage,
+  reactToMessage,
+  createPoll,
+  votePoll,
+  closePoll,
   subscribePush,
   unsubscribePush,
   sendPushTest,
@@ -163,6 +183,10 @@ const NewGroupModal = lazy(loadNewGroupModal);
 const DesktopSettingsModal = lazy(loadDesktopSettingsModal);
 const NotificationsSettingsModal = lazy(loadNotificationsSettingsModal);
 const WhatsNewModal = lazy(loadWhatsNewModal);
+const loadE2EESafetyNumberModal = () => import("../components/modals/E2EESafetyNumberModal.jsx");
+const E2EESafetyNumberModal = lazy(loadE2EESafetyNumberModal);
+import { FloatingVoiceStageBar } from "../components/call/FloatingVoiceStageBar.jsx";
+import { VoiceStageModal } from "../components/call/VoiceStageModal.jsx";
 
 const preloadChatPageCriticalChunks = () =>
   Promise.allSettled([
@@ -736,6 +760,15 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     debounceMs: NEW_CHAT_SEARCH_DEBOUNCE_MS,
     maxResults: CHAT_PAGE_CONFIG.newChatSearchMaxResults,
   });
+  const [isSecretChatModal, setIsSecretChatModal] = useState(false);
+  const [safetyNumberModalOpen, setSafetyNumberModalOpen] = useState(false);
+  const [activeSafetyNumber, setActiveSafetyNumber] = useState("");
+  const [activeVoiceStages, setActiveVoiceStages] = useState({});
+  const [connectedStage, setConnectedStage] = useState(null);
+  const [voiceStageModalOpen, setVoiceStageModalOpen] = useState(false);
+  const [isStageMuted, setIsStageMuted] = useState(true);
+  const [isStageRaisedHand, setIsStageRaisedHand] = useState(false);
+  const [isStageSpeaking, setIsStageSpeaking] = useState(false);
   const {
     chatsSearchQuery,
     setChatsSearchQuery,
@@ -1091,6 +1124,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     toggleScreenShare,
     isScreenSharing,
     backgroundEffect,
+    isBgProcessing,
     setVirtualBackground,
     handleSignal: handleCallSignal,
   } = useWebRTCCall({ realtimeSenderRef });
@@ -1947,6 +1981,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     activeChatIdRef,
     activeChatTypeRef,
     activePeer,
+    chatFolder,
   });
   const activeHeaderAvatarIcon = isActiveSavedChat ? (
     <Bookmark size={18} className="text-white" />
@@ -3956,6 +3991,33 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       handleLogout();
     },
     onCallSignal: handleCallSignal,
+    onVoiceStageEvent: (payload) => {
+      if (payload.type === "voice_stage_started" || payload.type === "voice_stage_updated") {
+        setActiveVoiceStages((prev) => ({ ...prev, [payload.chatId]: payload.stage }));
+        if (connectedStage && connectedStage.chatId === payload.chatId) {
+          setConnectedStage(payload.stage);
+        }
+      } else if (payload.type === "voice_stage_ended") {
+        setActiveVoiceStages((prev) => {
+          const next = { ...prev };
+          delete next[payload.chatId];
+          return next;
+        });
+        if (connectedStage && connectedStage.chatId === payload.chatId) {
+          setConnectedStage(null);
+          setVoiceStageModalOpen(false);
+        }
+      }
+    },
+    onE2eeKeyExchange: async (payload) => {
+      if (payload.chatId && payload.userId !== user?.id && payload.publicKey) {
+        await handlePeerPublicKey(payload.chatId, payload.publicKey);
+        if (payload.chatId === activeChatIdRef.current) {
+          const num = await getChatSecurityNumber(payload.chatId);
+          setActiveSafetyNumber(num);
+        }
+      }
+    },
     realtimeSenderRef,
   });
 
@@ -4314,6 +4376,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
               chatId: targetChatId,
               replyToMessageId: pendingMessage.replyTo?.id || null,
               clientRequestId: String(clientId),
+              isSilent: Boolean(pendingMessage.is_silent || pendingMessage._isSilent),
             });
         data = await res.json();
         if (!res.ok) {
@@ -5424,7 +5487,164 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     ],
   );
 
-  async function handleSend(event) {
+
+
+  const [scheduledCount, setScheduledCount] = useState(0);
+  const [showScheduledListModal, setShowScheduledListModal] = useState(false);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setScheduledCount(0);
+      return;
+    }
+    let isMounted = true;
+    fetchScheduledMessages(activeChatId)
+      .then((res) => {
+        if (isMounted && Array.isArray(res?.scheduledMessages)) {
+          setScheduledCount(res.scheduledMessages.length);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [activeChatId]);
+
+  const handleScheduleMessage = useCallback(
+    async ({ body, scheduledAt, isSilent }) => {
+      if (!activeChatId || !body) return;
+      try {
+        await scheduleMessage({
+          chatId: activeChatId,
+          body,
+          scheduledAt,
+          isSilent,
+          replyToMessageId: replyTarget?.id || null,
+        });
+        setScheduledCount((prev) => prev + 1);
+        setReplyTarget(null);
+      } catch (err) {
+        setUploadError("خطا در زمان‌بندی پیام.");
+      }
+    },
+    [activeChatId, replyTarget],
+  );
+
+  const handleSendSticker = useCallback(
+    async (sticker) => {
+      if (!activeChatId || !user) return;
+      const stickerBody = formatStickerMessage(sticker);
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const createdAt = new Date().toISOString();
+      const queuedAt = Date.now();
+      const pendingDate = parseServerDate(createdAt);
+      const pendingDayKey = `${pendingDate.getFullYear()}-${pendingDate.getMonth()}-${pendingDate.getDate()}`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          username: user.username,
+          body: stickerBody,
+          created_at: createdAt,
+          read_at: isActiveSavedChat ? createdAt : null,
+          read_by_user_id: isActiveSavedChat ? user?.id || null : null,
+          _clientId: tempId,
+          client_request_id: tempId,
+          _chatId: activeChatId,
+          _queuedAt: queuedAt,
+          _delivery: "sending",
+          _dayKey: pendingDayKey,
+          _dayLabel: formatDayLabel(createdAt),
+          _timeLabel: formatTime(createdAt),
+          _uploadType: "media",
+          _files: [],
+          _uploadProgress: null,
+          _awaitingServerEcho: false,
+          files: [],
+        },
+      ]);
+
+      updateOwnLatestChatPreview({
+        chatId: activeChatId,
+        body: stickerBody,
+        files: [],
+        createdAt,
+      });
+
+      const pendingMessage = {
+        _clientId: tempId,
+        client_request_id: tempId,
+        _chatId: activeChatId,
+        _queuedAt: queuedAt,
+        _delivery: "sending",
+        _uploadType: "media",
+        _files: [],
+        body: stickerBody,
+      };
+      await sendPendingMessage(pendingMessage);
+    },
+    [activeChatId, user, isActiveSavedChat, updateOwnLatestChatPreview, sendPendingMessage, formatTime],
+  );
+
+  const handleSendGif = useCallback(
+    async (gif) => {
+      if (!activeChatId || !user) return;
+      const gifBody = formatGifMessage(gif);
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const createdAt = new Date().toISOString();
+      const queuedAt = Date.now();
+      const pendingDate = parseServerDate(createdAt);
+      const pendingDayKey = `${pendingDate.getFullYear()}-${pendingDate.getMonth()}-${pendingDate.getDate()}`;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          username: user.username,
+          body: gifBody,
+          created_at: createdAt,
+          read_at: isActiveSavedChat ? createdAt : null,
+          read_by_user_id: isActiveSavedChat ? user?.id || null : null,
+          _clientId: tempId,
+          client_request_id: tempId,
+          _chatId: activeChatId,
+          _queuedAt: queuedAt,
+          _delivery: "sending",
+          _dayKey: pendingDayKey,
+          _dayLabel: formatDayLabel(createdAt),
+          _timeLabel: formatTime(createdAt),
+          _uploadType: "media",
+          _files: [],
+          _uploadProgress: null,
+          _awaitingServerEcho: false,
+          files: [],
+        },
+      ]);
+
+      updateOwnLatestChatPreview({
+        chatId: activeChatId,
+        body: gifBody,
+        files: [],
+        createdAt,
+      });
+
+      const pendingMessage = {
+        _clientId: tempId,
+        client_request_id: tempId,
+        _chatId: activeChatId,
+        _queuedAt: queuedAt,
+        _delivery: "sending",
+        _uploadType: "media",
+        _files: [],
+        body: gifBody,
+      };
+      await sendPendingMessage(pendingMessage);
+    },
+    [activeChatId, user, isActiveSavedChat, updateOwnLatestChatPreview, sendPendingMessage, formatTime],
+  );
+
+  async function handleSend(event, { isSilent = false } = {}) {
     event.preventDefault();
     if (!activeChatId) return;
     stopTypingIndicator(activeChatId);
@@ -5542,6 +5762,17 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         }
       : null;
 
+    let effectiveOutgoingBody = trimmedBody;
+    let optimisticPlaintext = null;
+    if (activeChat?.type === "secret" && trimmedBody) {
+      optimisticPlaintext = trimmedBody;
+      try {
+        effectiveOutgoingBody = await encryptSecretMessage(activeChatId, trimmedBody);
+      } catch (err) {
+        console.warn("E2EE encrypt error:", err);
+      }
+    }
+
     const effectiveUploadType = hasPendingFiles
       ? pendingUploadType
       : hasPendingVoice
@@ -5565,8 +5796,11 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         _files: pendingFiles,
         _createdAt: createdAt,
         _dayKey: pendingDayKey,
-        body: trimmedBody || (isEditingMessage ? String(editTarget?.body || "") : ""),
+        body: effectiveOutgoingBody || (isEditingMessage ? String(editTarget?.body || "") : ""),
+        _optimisticPlaintext: optimisticPlaintext,
         replyTo: replyPayload,
+        is_silent: isSilent ? 1 : 0,
+        _isSilent: isSilent,
         read_at: isSavedChat ? createdAt : null,
         read_by_user_id: isSavedChat ? user?.id || null : null,
       };
@@ -5609,7 +5843,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       {
         id: tempId,
         username: user.username,
-        body: trimmedBody,
+        body: effectiveOutgoingBody,
+        _optimisticPlaintext: optimisticPlaintext,
         created_at: createdAt,
         read_at: isSavedChat ? createdAt : null,
         read_by_user_id: isSavedChat ? user?.id || null : null,
@@ -5626,6 +5861,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         _uploadProgress: hasAnyPendingFiles ? 0 : null,
         _awaitingServerEcho: false,
         replyTo: replyPayload,
+        is_silent: isSilent ? 1 : 0,
+        _isSilent: isSilent,
         files: pendingFiles.map((file) => ({
           id: file.id,
           _localId: file._localId || file.id,
@@ -5667,6 +5904,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       _files: pendingFiles,
       body: trimmedBody,
       replyTo: replyPayload,
+      is_silent: isSilent ? 1 : 0,
+      _isSilent: isSilent,
     };
     await sendPendingMessage(pendingMessage);
   }
@@ -5685,7 +5924,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         return;
       }
       const target = matched.username;
-      const res = await createDmChat({ from: user.username, to: target });
+      const res = await createDmChat({ from: user.username, to: target, isSecret: isSecretChatModal });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || `Unable to start chat (${res.status}).`);
@@ -5696,6 +5935,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       setActiveChatId(data.id);
       setActivePeer(matched);
       setNewChatUsername("");
+      setIsSecretChatModal(false);
       setNewChatOpen(false);
       setMobileTab("chat");
       await loadChats();
@@ -5900,6 +6140,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     setNewChatResults([]);
     setNewChatSelection(null);
     setNewChatError("");
+    setIsSecretChatModal(false);
   };
   const toggleMuteChat = async (chatId) => {
     const id = normalizeUuid(chatId) || null;
@@ -6790,6 +7031,64 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     }
   }, []);
 
+
+  const handleReactToMessage = useCallback(async (message, emoji) => {
+    if (!message || !emoji) return;
+    const msgId = message._serverId || message.id;
+    if (!msgId || !activeChatId) return;
+
+    // Optimistic local state update
+    const cleanEmoji = String(emoji).trim();
+    const currentUserId = user?.id;
+    const currentUsername = user?.username;
+    const currentNickname = user?.nickname;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        const id = m._serverId || m.id;
+        if (id !== msgId) return m;
+        const list = Array.isArray(m.reactions) ? [...m.reactions] : [];
+        const existingIdx = list.findIndex(
+          (r) =>
+            r.emoji === cleanEmoji &&
+            ((currentUserId && r.userId === currentUserId) ||
+             (currentUsername && r.username && r.username.toLowerCase() === currentUsername.toLowerCase()))
+        );
+        if (existingIdx >= 0) {
+          list.splice(existingIdx, 1);
+        } else {
+          list.push({
+            userId: currentUserId,
+            username: currentUsername,
+            nickname: currentNickname,
+            emoji: cleanEmoji,
+          });
+        }
+        return { ...m, reactions: list };
+      })
+    );
+
+    try {
+      const res = await reactToMessage({
+        chatId: activeChatId,
+        messageId: msgId,
+        emoji: cleanEmoji,
+      });
+      const data = await res.json();
+      if (res.ok && data?.reactions) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const id = m._serverId || m.id;
+            if (id !== msgId) return m;
+            return { ...m, reactions: data.reactions };
+          })
+        );
+      }
+    } catch (err) {
+      console.error("Failed to react to message:", err);
+    }
+  }, [activeChatId, user]);
+
   const { contextMenu, closeContextMenu, openContextMenu } = useAppContextMenu({
     activeChatId,
     chats,
@@ -6799,6 +7098,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     canEditMessage: canEditMessageFromContext,
     canDeleteMessageForEveryone,
     onReplyToMessage: handleStartReply,
+    onReactToMessage: handleReactToMessage,
     onEditMessage: handleStartEdit,
     onDeleteMessage: handleDeleteMessageRequest,
     onForwardMessage: handleOpenForwardModal,
@@ -7049,6 +7349,9 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         chatsScrollToTopEpoch={chatsScrollToTopEpoch}
         editMode={editMode}
         visibleChats={visibleChats}
+        chatFolder={chatFolder}
+        onSelectChatFolder={handleSelectChatFolder}
+        folderUnreadCounts={folderUnreadCounts}
         selectedChats={selectedChats}
         loadingChats={loadingChats}
         activeChatId={activeChatId}
@@ -7212,6 +7515,11 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         loadingOlderMessages={loadingOlderMessages}
         hasOlderMessages={hasOlderMessages}
         handleSend={handleSend}
+        onSendSticker={handleSendSticker}
+        onSendGif={handleSendGif}
+        onScheduleMessage={handleScheduleMessage}
+        scheduledCount={scheduledCount}
+        onOpenScheduledList={() => setShowScheduledListModal(true)}
         userScrolledUp={userScrolledUp}
         isAtBottom={isAtBottom}
         unreadInChat={unreadInChat}
@@ -7330,6 +7638,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
           onToggleScreenShare={toggleScreenShare}
           isScreenSharing={isScreenSharing}
           backgroundEffect={backgroundEffect}
+          isBgProcessing={isBgProcessing}
           onSetVirtualBackground={setVirtualBackground}
         />
       ) : null}
@@ -7375,9 +7684,52 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
             canStartChat={canStartChat}
             startDirectMessage={startDirectMessage}
             onClose={closeNewChatModal}
+            isSecretChat={isSecretChatModal}
+            setIsSecretChat={setIsSecretChatModal}
           />
         </Suspense>
       ) : null}
+
+      {connectedStage && !voiceStageModalOpen && (
+        <FloatingVoiceStageBar
+          stage={connectedStage}
+          isMuted={isStageMuted}
+          isRaisedHand={isStageRaisedHand}
+          isSpeaking={isStageSpeaking}
+          onToggleMic={handleToggleStageMic}
+          onToggleRaiseHand={handleToggleStageRaiseHand}
+          onOpenStageModal={() => setVoiceStageModalOpen(true)}
+          onLeaveStage={handleLeaveVoiceStage}
+        />
+      )}
+
+      {voiceStageModalOpen && connectedStage && (
+        <VoiceStageModal
+          open={voiceStageModalOpen}
+          stage={connectedStage}
+          currentUserId={user?.id}
+          isAdmin={canCurrentUserEditGroup || user?.role === "admin" || user?.role === "owner"}
+          isMuted={isStageMuted}
+          isRaisedHand={isStageRaisedHand}
+          onToggleMic={handleToggleStageMic}
+          onToggleRaiseHand={handleToggleStageRaiseHand}
+          onPromoteSpeaker={handlePromoteSpeaker}
+          onEndStage={handleEndStage}
+          onLeaveStage={handleLeaveVoiceStage}
+          onClose={() => setVoiceStageModalOpen(false)}
+        />
+      )}
+
+      {safetyNumberModalOpen && (
+        <Suspense fallback={null}>
+          <E2EESafetyNumberModal
+            open={safetyNumberModalOpen}
+            onClose={() => setSafetyNumberModalOpen(false)}
+            peerName={activeHeaderAvatar?.nickname || activeHeaderAvatar?.username}
+            safetyNumber={activeSafetyNumber}
+          />
+        </Suspense>
+      )}
 
       {confirmDeleteOpen ? (
         <Suspense fallback={null}>
@@ -7671,6 +8023,11 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         </Suspense>
       ) : null}
 
+      <CreatePollModal
+        open={showPollModal}
+        onClose={() => setShowPollModal(false)}
+        onSubmit={handleCreatePoll}
+      />
       <AppContextMenu menu={contextMenu} onClose={closeContextMenu} />
     </div>
   );

@@ -67,6 +67,8 @@ export function useChatEvents({
   onChatListChanged,
   onSessionRevoked,
   onCallSignal,
+  onE2eeKeyExchange,
+  onVoiceStageEvent,
   realtimeSenderRef,
 }) {
   const onIncomingMessageRef = useRef(onIncomingMessage);
@@ -78,6 +80,8 @@ export function useChatEvents({
   const onChatListChangedRef = useRef(onChatListChanged);
   const onSessionRevokedRef = useRef(onSessionRevoked);
   const onCallSignalRef = useRef(onCallSignal);
+  const onE2eeKeyExchangeRef = useRef(onE2eeKeyExchange);
+  const onVoiceStageEventRef = useRef(onVoiceStageEvent);
   const canMarkReadInCurrentViewRef = useRef(canMarkReadInCurrentView);
   const loadChatsTimerRef = useRef(null);
   const loadChatsFirstScheduledAtRef = useRef(0);
@@ -117,6 +121,14 @@ export function useChatEvents({
   useEffect(() => {
     onCallSignalRef.current = onCallSignal;
   }, [onCallSignal]);
+
+  useEffect(() => {
+    onE2eeKeyExchangeRef.current = onE2eeKeyExchange;
+  }, [onE2eeKeyExchange]);
+
+  useEffect(() => {
+    onVoiceStageEventRef.current = onVoiceStageEvent;
+  }, [onVoiceStageEvent]);
 
   useEffect(() => {
     canMarkReadInCurrentViewRef.current = Boolean(canMarkReadInCurrentView);
@@ -268,9 +280,8 @@ export function useChatEvents({
           canMarkReadInCurrentViewRef.current;
         if (payload.type === "chat_message" && payloadChatId) {
           const eventTime = new Date().toISOString();
-          const previewBody = String(
-            payload?.summaryText || payload?.body || "",
-          ).trim();
+          const rawBody = String(payload?.summaryText || payload?.body || "").trim();
+          const previewBody = rawBody.startsWith("e2ee:v1:") ? "🔒 پیام محرمانه" : rawBody;
           let foundChat = false;
           setChats((prev) => {
             const { nextChats, found } = patchChatAndMoveToFront(
@@ -326,7 +337,55 @@ export function useChatEvents({
           scheduleLoadChats();
           onMessageDeletedRef.current?.(payload);
         }
-        if (isUpdateEvent) {
+        if (payload.type === "poll_updated") {
+            const payloadMsgId = normalizeUuid(payload?.messageId) || null;
+            if (payloadMsgId) {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  const msgId = normalizeUuid(msg?._serverId || msg?.id);
+                  if (msgId && msgId === payloadMsgId) {
+                    return {
+                      ...msg,
+                      poll: payload.poll,
+                    };
+                  }
+                  return msg;
+                }),
+              );
+            }
+            return;
+          }
+          if (payload.type === "e2ee_key_exchange") {
+            onE2eeKeyExchangeRef.current?.(payload);
+            return;
+          }
+          if (
+            payload.type === "voice_stage_started" ||
+            payload.type === "voice_stage_updated" ||
+            payload.type === "voice_stage_ended"
+          ) {
+            onVoiceStageEventRef.current?.(payload);
+            return;
+          }
+          if (payload.type === "message_reaction") {
+            const payloadMsgId = normalizeUuid(payload?.messageId) || null;
+            if (payloadMsgId) {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  const msgId = normalizeUuid(msg?._serverId || msg?.id);
+                  if (msgId && msgId === payloadMsgId) {
+                    return {
+                      ...msg,
+                      reactions: payload.reactions || [],
+                    };
+                  }
+                  return msg;
+                }),
+              );
+            }
+            return;
+          }
+          if (isUpdateEvent) {
           scheduleLoadChats();
           const payloadMsgId = normalizeUuid(payload?.messageId) || null;
           const previewBody = String(

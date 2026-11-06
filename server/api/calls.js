@@ -1,5 +1,6 @@
 import { createCallManager } from "../lib/callManager.js";
-import { validateUuidBody } from "../lib/uuidMiddleware.js";
+import { validateUuidBody, validateUuidParams } from "../lib/uuidMiddleware.js";
+import { createVoiceStageManager } from "../lib/voiceStageManager.js";
 
 /**
  * Register HTTP routes for WebRTC call setup and signaling fallback.
@@ -21,6 +22,13 @@ export function registerCallRoutes(app, deps) {
     createCallManager({
       ...deps,
       emitToUser: deps.emitToUser || deps.emitSseEvent,
+    });
+
+  const voiceStageManager =
+    deps.voiceStageManager ||
+    createVoiceStageManager({
+      emitChatEvent: deps.emitChatEvent,
+      emitSseEvent: deps.emitSseEvent,
     });
 
   const requireUser = async (req, res) => {
@@ -285,5 +293,115 @@ export function registerCallRoutes(app, deps) {
       }
     },
   );
+
+
+  // ─── Voice Stage / Continuous Audio Rooms ────────────────────────────────
+
+  // GET /api/calls/stages/active
+  app.get("/api/calls/stages/active", async (req, res) => {
+    res.json({ stages: voiceStageManager.listActiveStages() });
+  });
+
+  // GET /api/calls/stage/:chatId
+  app.get("/api/calls/stage/:chatId", validateUuidParams("chatId"), async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId } = req.params;
+    const stage = voiceStageManager.getStage(chatId);
+    res.json({ active: Boolean(stage), stage });
+  });
+
+  // POST /api/calls/stage/start
+  app.post("/api/calls/stage/start", async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId, title } = req.body || {};
+    if (!chatId) return res.status(400).json({ error: "chatId is required" });
+
+    const awaiting = async (val) => (val && typeof val.then === "function" ? await val : val);
+    const member = await awaiting(isMember?.(chatId, user.id));
+    if (!member) return res.status(403).json({ error: "Not a member of this chat" });
+
+    const stage = voiceStageManager.startStage({ chatId, title, user });
+    res.json({ ok: true, stage });
+  });
+
+  // POST /api/calls/stage/join
+  app.post("/api/calls/stage/join", async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId } = req.body || {};
+    if (!chatId) return res.status(400).json({ error: "chatId is required" });
+
+    const awaiting = async (val) => (val && typeof val.then === "function" ? await val : val);
+    const member = await awaiting(isMember?.(chatId, user.id));
+    if (!member) return res.status(403).json({ error: "Not a member of this chat" });
+
+    const stage = voiceStageManager.joinStage({ chatId, user });
+    if (!stage) return res.status(404).json({ error: "No active voice stage in this chat" });
+
+    let token = null;
+    const lkUrl = process.env.LIVEKIT_URL || "";
+    const lkKey = process.env.LIVEKIT_API_KEY || "";
+    const lkSecret = process.env.LIVEKIT_API_SECRET || "";
+    if (lkKey && lkSecret) {
+      try {
+        const { AccessToken } = await import("livekit-server-sdk");
+        const at = new AccessToken(lkKey, lkSecret, {
+          identity: user.id,
+          name: user.nickname || user.username || "Participant",
+        });
+        at.addGrant({
+          roomJoin: true,
+          room: "stage_" + chatId,
+          canPublish: stage.speakers.some((s) => s.id === user.id),
+          canSubscribe: true,
+          canPublishData: true,
+        });
+        token = await at.toJwt();
+      } catch (_) {}
+    }
+
+    res.json({ ok: true, stage, token, serverUrl: lkUrl });
+  });
+
+  // POST /api/calls/stage/leave
+  app.post("/api/calls/stage/leave", async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId } = req.body || {};
+    if (!chatId) return res.status(400).json({ error: "chatId is required" });
+
+    const left = voiceStageManager.leaveStage({ chatId, userId: user.id });
+    res.json({ ok: true, left });
+  });
+
+  // POST /api/calls/stage/raise-hand
+  app.post("/api/calls/stage/raise-hand", async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId, raised } = req.body || {};
+    if (!chatId) return res.status(400).json({ error: "chatId is required" });
+
+    const stage = voiceStageManager.toggleRaiseHand({ chatId, userId: user.id, raised });
+    res.json({ ok: true, stage });
+  });
+
+  // POST /api/calls/stage/moderate
+  app.post("/api/calls/stage/moderate", async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const { chatId, targetUserId, isSpeaker, isMuted, action } = req.body || {};
+    if (!chatId) return res.status(400).json({ error: "chatId is required" });
+
+    const result = voiceStageManager.moderate({
+      chatId,
+      targetUserId,
+      isSpeaker,
+      isMuted,
+      action,
+    });
+    res.json({ ok: true, ...result });
+  });
 
 }

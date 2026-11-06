@@ -12,7 +12,11 @@ import {
   Send,
   Close,
   Video,
+  Vote,
   Smile,
+  ChevronUp,
+  BellOff,
+  Clock,
 } from "../../../icons/lucide.js";
 import EmojiPickerPopover from "../emoji/EmojiPickerPopover.jsx";
 import { SHORTCODE_MAP } from "../emoji/emojiData.js";
@@ -27,6 +31,7 @@ import {
 import VerifiedBadge from "../../common/VerifiedBadge.jsx";
 import UserRoleBadge from "../../common/UserRoleBadge.jsx";
 import Tooltip from "../../common/Tooltip.jsx";
+import ScheduleMessageModal from "../../modals/ScheduleMessageModal.jsx";
 
 function applyTextareaSize({
   textareaEl,
@@ -60,6 +65,11 @@ export function MessageComposer({
   activeChatId,
   isDesktop,
   handleSend,
+  onSendSticker,
+  onSendGif,
+  onScheduleMessage,
+  scheduledCount = 0,
+  onOpenScheduledList,
   onComposerResize,
   replyTarget,
   onClearReply,
@@ -74,6 +84,7 @@ export function MessageComposer({
   onClearPendingUploads,
   onRemovePendingUpload,
   onUploadFilesSelected,
+  onOpenPollModal,
   onVoiceRecorded,
   onClearPendingVoiceMessage,
   uploadError,
@@ -110,6 +121,22 @@ export function MessageComposer({
   const isPressingMicRef = useRef(false);
   const pendingStopRef = useRef(false);
   const maxTextareaHeight = 136;
+  const isSilentRef = useRef(false);
+  const [showSendOptions, setShowSendOptions] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const sendOptionsRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSendOptions) return;
+    const handleClickOutside = (e) => {
+      if (sendOptionsRef.current && !sendOptionsRef.current.contains(e.target)) {
+        setShowSendOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSendOptions]);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFormattingToolbar, setShowFormattingToolbar] = useState(false);
   const emojiButtonRef = useRef(null);
@@ -753,7 +780,9 @@ export function MessageComposer({
           event.preventDefault();
           return;
         }
-        handleSend(event);
+        handleSend(event, { isSilent: isSilentRef.current });
+        isSilentRef.current = false;
+        setShowSendOptions(false);
         requestAnimationFrame(() => {
           if (!editTarget) {
             setMessageValue("");
@@ -1151,6 +1180,21 @@ export function MessageComposer({
                     <File size={18} className="shrink-0 text-emerald-500 icon-anim-lift" />
                     Document
                   </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      captureComposerFocus();
+                      if (!isDesktop) event.preventDefault();
+                    }}
+                    onClick={() => {
+                      setShowUploadMenu(false);
+                      onOpenPollModal?.();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-200"
+                  >
+                    <Vote size={18} className="shrink-0 text-emerald-500 icon-anim-bob" />
+                    Poll or Quiz
+                  </button>
                 </div>
               ) : null}
               <input
@@ -1209,10 +1253,27 @@ export function MessageComposer({
               >
                 <Smile size={20} className="icon-anim-pop" />
               </button>
+
+            {scheduledCount > 0 ? (
+              <button
+                type="button"
+                onClick={onOpenScheduledList}
+                title={`${scheduledCount} پیام زمان‌بندی‌شده در صف`}
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 active:scale-95 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
+                <Clock size={19} />
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white shadow-xs">
+                  {scheduledCount}
+                </span>
+              </button>
+            ) : null}
+
               <EmojiPickerPopover
                 isOpen={showEmojiPicker}
                 onClose={() => setShowEmojiPicker(false)}
                 onSelectEmoji={handleInsertEmoji}
+                onSelectSticker={onSendSticker}
+                onSelectGif={onSendGif}
                 anchorRef={emojiButtonRef}
               />
             </div>
@@ -1321,8 +1382,15 @@ export function MessageComposer({
             onCancel={handleCancelVoiceRecording}
           />
         )}
+        <div className="relative flex items-center" ref={sendOptionsRef}>
         <button
           type={micMode || isRecording ? "button" : "submit"}
+          onContextMenu={(e) => {
+            if (!micMode && !isRecording && canSubmitMessage && !editTarget) {
+              e.preventDefault();
+              setShowSendOptions((prev) => !prev);
+            }
+          }}
           onPointerDown={(event) => {
             captureComposerFocus();
             if (!isDesktop) event.preventDefault();
@@ -1365,6 +1433,56 @@ export function MessageComposer({
             )
           )}
         </button>
+
+        {!micMode && !isRecording && canSubmitMessage && !editTarget ? (
+          <button
+            type="button"
+            onClick={() => setShowSendOptions((prev) => !prev)}
+            title="گزینه‌های ارسال (بی‌صدا / زمان‌بندی)"
+            className="absolute -top-1.5 -left-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-300 bg-white text-emerald-700 shadow-xs transition hover:scale-110 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-300"
+          >
+            <ChevronUp size={12} />
+          </button>
+        ) : null}
+
+        {showSendOptions ? (
+          <div className="absolute bottom-14 left-0 z-40 w-48 rounded-2xl border border-emerald-200/80 bg-white/95 p-1.5 shadow-xl shadow-emerald-950/15 backdrop-blur-md animate-in fade-in dark:border-slate-800 dark:bg-slate-900/95">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSendOptions(false);
+                isSilentRef.current = true;
+                composerRef.current?.requestSubmit();
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 transition dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <BellOff size={15} className="text-amber-500" />
+              <span>ارسال بدون صدا</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSendOptions(false);
+                setShowScheduleModal(true);
+              }}
+              className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 transition dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Clock size={15} className="text-emerald-600 dark:text-emerald-400" />
+              <span>زمان‌بندی پیام</span>
+            </button>
+          </div>
+        ) : null}
+
+        <ScheduleMessageModal
+          isOpen={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          messagePreview={messageValue}
+          onConfirmSchedule={(params) => {
+            onScheduleMessage?.({ ...params, body: messageValue });
+            setMessageValue("");
+          }}
+        />
+        </div>
       </div>
     </form>
   );

@@ -1,7 +1,7 @@
 /**
  * Video Background Processing Engine
  * Provides Background Blur and Virtual Background replacement using
- * client-side MediaPipe Selfie Segmentation and Canvas WebGL/2D composition.
+ * self-hosted MediaPipe Selfie Segmentation and Canvas WebGL/2D composition.
  */
 
 let segmenterInstance = null;
@@ -13,24 +13,33 @@ export async function getSelfieSegmenter() {
 
   segmenterLoadingPromise = (async () => {
     try {
-      const module = await import("@mediapipe/selfie_segmentation");
-      const SelfieSegmentation = module.SelfieSegmentation || module.default?.SelfieSegmentation || window.SelfieSegmentation;
+      if (typeof window !== "undefined" && !window.SelfieSegmentation) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "/mediapipe/selfie_segmentation.js";
+          s.async = true;
+          s.onload = () => resolve();
+          s.onerror = (e) => reject(new Error("Failed to load /mediapipe/selfie_segmentation.js"));
+          document.head.appendChild(s);
+        });
+      }
+
+      const SelfieSegmentation = typeof window !== "undefined" ? window.SelfieSegmentation : null;
       if (!SelfieSegmentation) {
-        throw new Error("SelfieSegmentation constructor not found");
+        throw new Error("SelfieSegmentation constructor not found on window");
       }
       const segmenter = new SelfieSegmentation({
-        locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+        locateFile: (file) => `/mediapipe/${file}`,
       });
       segmenter.setOptions({
-        modelSelection: 1, // 0 for general landscape, 1 for close-up selfies
-        selfieMode: true,
+        modelSelection: 1, // 1 for landscape (ultra-fast 144x256 for realtime video calls)
+        selfieMode: false, // Keep original camera orientation
       });
       await segmenter.initialize();
       segmenterInstance = segmenter;
       return segmenter;
     } catch (err) {
-      console.warn("Could not load MediaPipe Selfie Segmentation:", err);
+      console.error("Could not load MediaPipe Selfie Segmentation:", err);
       segmenterLoadingPromise = null;
       throw err;
     }
@@ -42,8 +51,8 @@ export async function getSelfieSegmenter() {
 /**
  * Creates a processed MediaStreamTrack from a raw camera video stream.
  * @param {HTMLVideoElement} sourceVideo - Hidden playing video element
- * @param {string} effect - "none" | "blur" | "deep-blur" | "image"
- * @param {HTMLImageElement|null} customBgImage - Optional background image
+ * @param {string} initialEffect - "none" | "blur" | "deep-blur" | "image"
+ * @param {HTMLImageElement|null} initialBgImage - Optional background image
  * @returns {{ outputStream: MediaStream, stop: Function, setEffect: Function }}
  */
 export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "blur", initialBgImage = null) {
@@ -53,17 +62,22 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
   let bgImage = initialBgImage;
   let isRunning = true;
   let animFrameId = null;
+  let isProcessing = false;
 
   canvas.width = sourceVideo.videoWidth || 640;
   canvas.height = sourceVideo.videoHeight || 480;
 
   let segmenter = null;
-  getSelfieSegmenter().then((s) => {
-    segmenter = s;
-    if (segmenter) {
-      segmenter.onResults(onResults);
-    }
-  }).catch(() => {});
+  getSelfieSegmenter()
+    .then((s) => {
+      segmenter = s;
+      if (segmenter) {
+        segmenter.onResults(onResults);
+      }
+    })
+    .catch((err) => {
+      console.warn("MediaPipe segmenter initialization warning:", err);
+    });
 
   function onResults(results) {
     if (!isRunning || !ctx) return;
@@ -78,49 +92,72 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
       return;
     }
 
-    // 1. Draw Background (blurred or virtual image)
-    if (currentEffect === "blur") {
-      ctx.filter = "blur(14px)";
+    try {
+      // 1. Draw raw crisp video frame
       ctx.drawImage(results.image, 0, 0, width, height);
-    } else if (currentEffect === "deep-blur") {
-      ctx.filter = "blur(28px)";
-      ctx.drawImage(results.image, 0, 0, width, height);
-    } else if (currentEffect === "image" && bgImage) {
+
+      // 2. Keep ONLY the person using the segmentation mask
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.drawImage(results.segmentationMask, 0, 0, width, height);
+
+      // 3. Draw blurred background BEHIND the person
+      ctx.globalCompositeOperation = "destination-over";
+      if (currentEffect === "deep-blur") {
+        ctx.filter = "blur(24px)";
+      } else if (currentEffect === "blur") {
+        ctx.filter = "blur(12px)";
+      } else if (currentEffect === "image" && bgImage) {
+        ctx.filter = "none";
+        ctx.drawImage(bgImage, 0, 0, width, height);
+      } else {
+        ctx.filter = "blur(12px)";
+      }
+
+      if (currentEffect !== "image" || !bgImage) {
+        ctx.drawImage(results.image, 0, 0, width, height);
+      }
+    } catch (_) {
+      // Fallback in case of rendering error
       ctx.filter = "none";
-      ctx.drawImage(bgImage, 0, 0, width, height);
-    } else {
-      ctx.filter = "blur(14px)";
+      ctx.globalCompositeOperation = "source-over";
       ctx.drawImage(results.image, 0, 0, width, height);
     }
-    ctx.filter = "none";
-
-    // 2. Cut out person mask
-    ctx.globalCompositeOperation = "destination-atop";
-    ctx.drawImage(results.segmentationMask, 0, 0, width, height);
-
-    // 3. Draw person back in foreground
-    ctx.globalCompositeOperation = "destination-over";
-    ctx.drawImage(results.image, 0, 0, width, height);
 
     ctx.restore();
   }
 
   async function processFrame() {
     if (!isRunning) return;
-    if (sourceVideo.readyState >= 2 && segmenter) {
-      if (canvas.width !== sourceVideo.videoWidth || canvas.height !== sourceVideo.videoHeight) {
-        if (sourceVideo.videoWidth > 0 && sourceVideo.videoHeight > 0) {
+
+    if (sourceVideo.readyState >= 2) {
+      if (sourceVideo.videoWidth > 0 && sourceVideo.videoHeight > 0) {
+        if (canvas.width !== sourceVideo.videoWidth || canvas.height !== sourceVideo.videoHeight) {
           canvas.width = sourceVideo.videoWidth;
           canvas.height = sourceVideo.videoHeight;
         }
       }
-      try {
-        await segmenter.send({ image: sourceVideo });
-      } catch (_) {}
-    } else if (ctx && sourceVideo.readyState >= 2) {
-      ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
+
+      if (segmenter && !isProcessing && currentEffect !== "none") {
+        isProcessing = true;
+        try {
+          await segmenter.send({ image: sourceVideo });
+        } catch (_) {
+          if (ctx) {
+            ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
+          }
+        } finally {
+          isProcessing = false;
+        }
+      } else if (!segmenter || currentEffect === "none") {
+        if (ctx) {
+          ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
+        }
+      }
     }
-    animFrameId = requestAnimationFrame(processFrame);
+
+    if (isRunning) {
+      animFrameId = requestAnimationFrame(processFrame);
+    }
   }
 
   processFrame();

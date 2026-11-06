@@ -497,7 +497,7 @@ function registerChatRoutes(app, deps) {
     const session = await requireSession(req, res);
     if (!session) return;
 
-    const { from, to } = req.body || {};
+    const { from, to, isSecret } = req.body || {};
     if (!from || !to) {
       return res.status(400).json({ error: "Both users are required." });
     }
@@ -512,7 +512,8 @@ function registerChatRoutes(app, deps) {
       return res.status(404).json({ error: "User not found." });
     }
 
-    const rawExistingId = findDmChat(fromUser.id, toUser.id);
+    const chatType = isSecret ? "secret" : "dm";
+    const rawExistingId = findDmChat(fromUser.id, toUser.id, chatType);
     const existingId = rawExistingId && typeof rawExistingId.then === "function" ? await rawExistingId : rawExistingId;
     if (existingId) {
       // Unhide the chat for both users (in case it was previously deleted)
@@ -521,10 +522,10 @@ function registerChatRoutes(app, deps) {
       const u2 = unhideChat(toUser.id, existingId);
       if (u2 && typeof u2.then === "function") await u2;
 
-      return res.json({ id: existingId });
+      return res.json({ id: existingId, type: chatType });
     }
 
-    const rawChatId = createChat(null, "dm");
+    const rawChatId = createChat(null, chatType);
     const chatId = rawChatId && typeof rawChatId.then === "function" ? await rawChatId : rawChatId;
     if (!chatId) {
       return res.status(500).json({ error: "Failed to create chat." });
@@ -535,7 +536,7 @@ function registerChatRoutes(app, deps) {
     const m2 = addChatMember(chatId, toUser.id, "member");
     if (m2 && typeof m2.then === "function") await m2;
 
-    res.json({ id: chatId });
+    res.json({ id: chatId, type: chatType });
   });
 
   app.post("/api/chats", async (req, res) => {

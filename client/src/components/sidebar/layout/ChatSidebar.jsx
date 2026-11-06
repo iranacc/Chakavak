@@ -1,3 +1,4 @@
+import { ChatFolderTabs } from "../list/ChatFolderTabs.jsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ChatsListPanel from "../list/ChatsListPanel.jsx";
 import CallsPanel from "../../call/CallsPanel.jsx";
@@ -58,6 +59,9 @@ export default function ChatSidebar({
   discoverChannels,
   discoverSaved,
   isSavedChatActive,
+  chatFolder = 'all',
+  onSelectChatFolder,
+  folderUnreadCounts = {},
   onOpenDiscoveredUser,
   onOpenDiscoveredGroup,
   onOpenUserProfileContext,
@@ -329,6 +333,13 @@ export default function ChatSidebar({
               : "flex min-h-0 flex-1 flex-col"
           }
         >
+          {mobileTab !== "calls" && !chatsSearchFocused && !chatsSearchQuery ? (
+            <ChatFolderTabs
+              currentFolder={chatFolder}
+              onSelectFolder={onSelectChatFolder}
+              counts={folderUnreadCounts}
+            />
+          ) : null}
           <div
             key={`chats-scroll-${scrollEpoch}`}
             ref={chatsScrollRef}

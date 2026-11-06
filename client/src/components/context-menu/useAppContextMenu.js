@@ -34,6 +34,7 @@ export function useAppContextMenu({
   canEditMessage,
   canDeleteMessageForEveryone,
   onReplyToMessage,
+  onReactToMessage,
   onEditMessage,
   onDeleteMessage,
   onForwardMessage,
@@ -287,8 +288,8 @@ export function useAppContextMenu({
         point,
         items,
         reactions: kind === "message" ? ["❤️", "👍", "😂", "🔥", "👏", "😢"] : null,
-        onSelectReaction: kind === "message" && typeof onReplyToMessage === "function"
-          ? (emoji) => onReplyToMessage(data?.message, { quickEmoji: emoji })
+        onSelectReaction: kind === "message" && typeof onReactToMessage === "function"
+          ? (emoji) => onReactToMessage(data?.message, emoji)
           : null,
         targetEl: targetEl || null,
         targetChatId: activeChatId || null,
@@ -316,6 +317,7 @@ export function useAppContextMenu({
       onOpenProfile,
       onRemoveGroupMember,
       onReplyToMessage,
+      onReactToMessage,
       onToggleChatMute,
       canDeleteMessageForEveryone,
       canEditMessage,

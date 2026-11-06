@@ -760,7 +760,7 @@ export function createUser(
   return id;
 }
 
-export function findDmChat(userId, otherUserId) {
+export function findDmChat(userId, otherUserId, chatType = "dm") {
   if (!userId || !otherUserId) {
     return isPostgresMode() ? Promise.resolve(null) : null;
   }
@@ -774,7 +774,7 @@ export function findDmChat(userId, otherUserId) {
       .join("chat_members as m2", function () {
         this.on("m2.chat_id", "=", "c.id").andOn("m2.user_id", "=", dbKnex.raw("?", [otherUserId]));
       })
-      .where("c.type", "dm")
+      .where("c.type", chatType)
       .orderByRaw("(SELECT COUNT(*) FROM chat_messages WHERE chat_id = c.id) DESC")
       .orderByRaw("(SELECT created_at FROM chat_messages WHERE chat_id = c.id ORDER BY created_at DESC, id DESC LIMIT 1) DESC")
       .orderBy("c.id", "desc")
@@ -790,8 +790,8 @@ export function createChat(name, type = "dm", options = {}) {
   const id = generateUuid();
   const normalizedType = String(type || "dm");
   const normalizedName =
-    normalizedType === "dm"
-      ? String(name || "").trim() || "dm"
+    normalizedType === "dm" || normalizedType === "secret"
+      ? String(name || "").trim() || normalizedType
       : String(name || "").trim() || null;
   const groupUsername =
     normalizedType === "group" || normalizedType === "channel"
@@ -2570,7 +2570,7 @@ export function createMessage(
   replyToMessageId = null,
   expiresAt = null,
   clientRequestId = null,
-  { allowPlaintextSystemMessage = false } = {},
+  { allowPlaintextSystemMessage = false, isSilent = false } = {},
 ) {
   const id = generateUuid();
   const storedBody = storageEncryption.encryptText(body, {
@@ -2592,6 +2592,7 @@ export function createMessage(
       reply_to_message_id: replyToMessageId || null,
       expires_at: expiresAt || null,
       client_request_id: clientRequestId || null,
+      is_silent: isSilent ? 1 : 0,
     }),
   );
 
@@ -2640,6 +2641,7 @@ export function createOrReuseMessage(
   replyToMessageId = null,
   expiresAt = null,
   clientRequestId = null,
+  options = {},
 ) {
   const normalizedClientRequestId = String(clientRequestId || "").trim() || null;
 
@@ -2651,6 +2653,7 @@ export function createOrReuseMessage(
       replyToMessageId,
       expiresAt,
       normalizedClientRequestId,
+      options,
     );
     if (rawId && typeof rawId.then === "function") {
       return rawId.then((id) => ({ id, deduped: false }));
@@ -3183,6 +3186,7 @@ export function getMessages(chatId, options = {}) {
       chat_messages.read_at,
       chat_messages.read_by_user_id,
       chat_messages.reply_to_message_id,
+      chat_messages.is_silent,
       users.id AS user_id,
       COALESCE(users.username, 'deleted') AS username,
       COALESCE(users.nickname, 'Deleted user') AS nickname,
@@ -4419,6 +4423,11 @@ const RESET_TABLES = [
   "remote_channel_queue",
   "remote_channel_sources",
   "remote_channel_provider_state",
+  "scheduled_messages",
+  "chat_e2ee_keys",
+  "polls",
+  "poll_votes",
+  "message_reactions",
   "push_subscriptions",
   "sessions",
   "chats",
@@ -4482,4 +4491,403 @@ export function dbSetSetting(key, value) {
 
 export function dbDeleteSetting(key) {
   run(dbKnex("app_settings").where({ key: String(key) }).del());
+}
+
+
+// ─── Message Reactions ──────────────────────────────────────────────────────
+
+export function addMessageReaction(messageId, userId, emoji) {
+  const cleanEmoji = String(emoji || "").trim();
+  if (!cleanEmoji || !messageId || !userId) return false;
+  run(
+    `INSERT OR IGNORE INTO message_reactions (message_id, user_id, emoji, created_at)
+     VALUES (?, ?, ?, datetime('now'))`,
+    [String(messageId), String(userId), cleanEmoji],
+  );
+  saveDatabase();
+  return true;
+}
+
+export function removeMessageReaction(messageId, userId, emoji) {
+  const cleanEmoji = String(emoji || "").trim();
+  if (!cleanEmoji || !messageId || !userId) return false;
+  run(
+    `DELETE FROM message_reactions
+     WHERE message_id = ? AND user_id = ? AND emoji = ?`,
+    [String(messageId), String(userId), cleanEmoji],
+  );
+  saveDatabase();
+  return true;
+}
+
+export function toggleMessageReaction(messageId, userId, emoji) {
+  const cleanEmoji = String(emoji || "").trim();
+  if (!cleanEmoji || !messageId || !userId) return { added: false };
+  const existing = getRow(
+    `SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`,
+    [String(messageId), String(userId), cleanEmoji],
+  );
+  if (existing) {
+    removeMessageReaction(messageId, userId, cleanEmoji);
+    return { added: false };
+  } else {
+    addMessageReaction(messageId, userId, cleanEmoji);
+    return { added: true };
+  }
+}
+
+export function getMessageReactions(messageIds) {
+  const ids = (Array.isArray(messageIds) ? messageIds : [messageIds])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length) return {};
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = getAll(
+    `SELECT r.message_id, r.user_id, r.emoji, u.username, u.nickname
+     FROM message_reactions r
+     LEFT JOIN users u ON u.id = r.user_id
+     WHERE r.message_id IN (${placeholders})
+     ORDER BY r.created_at ASC`,
+    ids,
+  ) || [];
+
+  const result = {};
+  ids.forEach((id) => {
+    result[id] = [];
+  });
+
+  rows.forEach((row) => {
+    if (!result[row.message_id]) {
+      result[row.message_id] = [];
+    }
+    result[row.message_id].push({
+      userId: row.user_id,
+      emoji: row.emoji,
+      username: row.username,
+      nickname: row.nickname,
+    });
+  });
+
+  return result;
+}
+
+
+// ─── Polls & Quizzes ────────────────────────────────────────────────────────
+
+export function createPoll(pollData) {
+  const {
+    id = generateUuid(),
+    messageId,
+    chatId,
+    creatorId,
+    question,
+    options,
+    multipleChoice = false,
+    isAnonymous = false,
+    isQuiz = false,
+    correctOptionIndex = null,
+  } = pollData;
+
+  const optionsJson = JSON.stringify(options || []);
+  run(
+    `INSERT INTO polls (
+      id, message_id, chat_id, creator_id, question, options,
+      multiple_choice, is_anonymous, is_quiz, correct_option_index, is_closed, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
+    [
+      String(id),
+      String(messageId),
+      String(chatId),
+      String(creatorId),
+      String(question).trim(),
+      optionsJson,
+      multipleChoice ? 1 : 0,
+      isAnonymous ? 1 : 0,
+      isQuiz ? 1 : 0,
+      correctOptionIndex !== null && correctOptionIndex !== undefined ? Number(correctOptionIndex) : null,
+    ],
+  );
+  saveDatabase();
+  return id;
+}
+
+export function getPollByMessageId(messageId) {
+  if (!messageId) return null;
+  const poll = getRow(`SELECT * FROM polls WHERE message_id = ?`, [String(messageId)]);
+  if (!poll) return null;
+  return formatPollRow(poll);
+}
+
+export function getPollsByMessageIds(messageIds) {
+  const ids = (Array.isArray(messageIds) ? messageIds : [messageIds])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length) return {};
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = getAll(`SELECT * FROM polls WHERE message_id IN (${placeholders})`, ids) || [];
+  const map = {};
+  rows.forEach((row) => {
+    map[row.message_id] = formatPollRow(row);
+  });
+  return map;
+}
+
+function formatPollRow(poll) {
+  let options = [];
+  try {
+    options = JSON.parse(poll.options || "[]");
+  } catch {}
+
+  const votes = getAll(
+    `SELECT v.user_id, v.option_index, u.username, u.nickname
+     FROM poll_votes v
+     LEFT JOIN users u ON u.id = v.user_id
+     WHERE v.poll_id = ?
+     ORDER BY v.created_at ASC`,
+    [poll.id],
+  ) || [];
+
+  const optionVotes = options.map(() => 0);
+  const totalVotes = votes.length;
+  const voterIds = new Set();
+
+  votes.forEach((v) => {
+    const idx = Number(v.option_index);
+    if (idx >= 0 && idx < optionVotes.length) {
+      optionVotes[idx] += 1;
+    }
+    voterIds.add(v.user_id);
+  });
+
+  return {
+    id: poll.id,
+    messageId: poll.message_id,
+    chatId: poll.chat_id,
+    creatorId: poll.creator_id,
+    question: poll.question,
+    options,
+    multipleChoice: Boolean(poll.multiple_choice),
+    isAnonymous: Boolean(poll.is_anonymous),
+    isQuiz: Boolean(poll.is_quiz),
+    correctOptionIndex: poll.correct_option_index !== null ? Number(poll.correct_option_index) : null,
+    isClosed: Boolean(poll.is_closed),
+    totalVoters: voterIds.size,
+    optionVotes,
+    votes: poll.is_anonymous
+      ? []
+      : votes.map((v) => ({
+          userId: v.user_id,
+          username: v.username,
+          nickname: v.nickname,
+          optionIndex: v.option_index,
+        })),
+  };
+}
+
+export function votePoll(pollId, userId, optionIndexes) {
+  const poll = getRow(`SELECT * FROM polls WHERE id = ?`, [String(pollId)]);
+  if (!poll || poll.is_closed) return null;
+
+  const indexes = (Array.isArray(optionIndexes) ? optionIndexes : [optionIndexes])
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 0);
+
+  // If not multipleChoice, keep only first selected
+  const chosen = poll.multiple_choice ? indexes : indexes.slice(0, 1);
+
+  // Clear previous votes by this user for this poll
+  run(`DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?`, [String(pollId), String(userId)]);
+
+  // Insert chosen votes
+  chosen.forEach((idx) => {
+    run(
+      `INSERT INTO poll_votes (poll_id, user_id, option_index, created_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      [String(pollId), String(userId), idx],
+    );
+  });
+
+  saveDatabase();
+  return getPollByMessageId(poll.message_id);
+}
+
+export function closePoll(pollId, userId) {
+  const poll = getRow(`SELECT * FROM polls WHERE id = ?`, [String(pollId)]);
+  if (!poll) return null;
+  run(`UPDATE polls SET is_closed = 1 WHERE id = ?`, [String(pollId)]);
+  saveDatabase();
+  return getPollByMessageId(poll.message_id);
+}
+
+export function createScheduledMessage({
+  chatId,
+  userId,
+  body,
+  scheduledAt,
+  isSilent = false,
+  replyToMessageId = null,
+}) {
+  const id = generateUuid();
+  const storedBody = storageEncryption.encryptText(body);
+  const res = run(
+    dbKnex("scheduled_messages").insert({
+      id,
+      chat_id: chatId,
+      user_id: userId,
+      body: storedBody,
+      scheduled_at: scheduledAt,
+      is_silent: isSilent ? 1 : 0,
+      reply_to_message_id: replyToMessageId || null,
+      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+    }),
+  );
+
+  saveDatabase();
+
+  const format = () => ({
+    id,
+    chat_id: chatId,
+    user_id: userId,
+    body,
+    scheduled_at: scheduledAt,
+    is_silent: Boolean(isSilent),
+    reply_to_message_id: replyToMessageId || null,
+  });
+
+  if (res && typeof res.then === "function") {
+    return res.then(format);
+  }
+  return format();
+}
+
+export function getScheduledMessages(chatId, userId) {
+  if (!chatId || !userId) return isPostgresMode() ? Promise.resolve([]) : [];
+  const rows = getAll(
+    dbKnex("scheduled_messages")
+      .select("*")
+      .where({ chat_id: chatId, user_id: userId })
+      .orderBy("scheduled_at", "asc"),
+  );
+
+  const process = (list) =>
+    (list || []).map((row) => ({
+      ...row,
+      body: storageEncryption.decryptText(row.body),
+      is_silent: Boolean(row.is_silent),
+    }));
+
+  if (rows && typeof rows.then === "function") {
+    return rows.then(process);
+  }
+  return process(rows);
+}
+
+export function getScheduledMessageById(id) {
+  if (!id) return isPostgresMode() ? Promise.resolve(null) : null;
+  const row = getRow(
+    dbKnex("scheduled_messages").select("*").where({ id }).first(),
+  );
+
+  const process = (r) => {
+    if (!r) return null;
+    return {
+      ...r,
+      body: storageEncryption.decryptText(r.body),
+      is_silent: Boolean(r.is_silent),
+    };
+  };
+
+  if (row && typeof row.then === "function") {
+    return row.then(process);
+  }
+  return process(row);
+}
+
+export function getDueScheduledMessages(nowIso) {
+  const threshold = nowIso || new Date().toISOString();
+  const rows = getAll(
+    dbKnex("scheduled_messages")
+      .select("*")
+      .where("scheduled_at", "<=", threshold)
+      .orderBy("scheduled_at", "asc"),
+  );
+
+  const process = (list) =>
+    (list || []).map((row) => ({
+      ...row,
+      body: storageEncryption.decryptText(row.body),
+      is_silent: Boolean(row.is_silent),
+    }));
+
+  if (rows && typeof rows.then === "function") {
+    return rows.then(process);
+  }
+  return process(rows);
+}
+
+export function deleteScheduledMessage(id, userId) {
+  if (!id) return isPostgresMode() ? Promise.resolve(false) : false;
+  const query = dbKnex("scheduled_messages").where({ id });
+  if (userId) {
+    query.andWhere({ user_id: userId });
+  }
+  const res = run(query.del());
+  saveDatabase();
+  if (res && typeof res.then === "function") {
+    return res.then((count) => count > 0);
+  }
+  return res > 0;
+}
+
+export function updateScheduledMessageTime(id, userId, newScheduledAt) {
+  if (!id || !newScheduledAt) return isPostgresMode() ? Promise.resolve(false) : false;
+  const query = dbKnex("scheduled_messages").where({ id });
+  if (userId) {
+    query.andWhere({ user_id: userId });
+  }
+  const res = run(query.update({ scheduled_at: newScheduledAt }));
+  saveDatabase();
+  if (res && typeof res.then === "function") {
+    return res.then((count) => count > 0);
+  }
+  return res > 0;
+}
+
+
+export function setChatE2eeKey(chatId, userId, publicKey) {
+  if (!chatId || !userId || !publicKey) return isPostgresMode() ? Promise.resolve() : undefined;
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+  if (isPostgresMode()) {
+    return dbKnex("chat_e2ee_keys")
+      .insert({
+        chat_id: chatId,
+        user_id: userId,
+        public_key: publicKey,
+        created_at: now,
+      })
+      .onConflict(["chat_id", "user_id"])
+      .merge({
+        public_key: publicKey,
+        created_at: now,
+      });
+  }
+  const res = run(
+    dbKnex.raw(
+      "INSERT INTO chat_e2ee_keys (chat_id, user_id, public_key, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(chat_id, user_id) DO UPDATE SET public_key = excluded.public_key, created_at = excluded.created_at",
+      [chatId, userId, publicKey, now]
+    )
+  );
+  saveDatabase();
+  return res;
+}
+
+export function getChatE2eeKeys(chatId) {
+  if (!chatId) return isPostgresMode() ? Promise.resolve([]) : [];
+  return getAll(
+    dbKnex("chat_e2ee_keys")
+      .select("chat_id", "user_id", "public_key", "created_at")
+      .where({ chat_id: chatId })
+  );
 }

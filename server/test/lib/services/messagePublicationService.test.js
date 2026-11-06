@@ -57,6 +57,7 @@ describe("messagePublicationService", () => {
       null,
       null,
       null,
+      { isSilent: false },
     );
     expect(res.sseEvents.length).toBe(1);
     expect(res.pushRecipients).toContain(BOB_ID);
