@@ -41,15 +41,11 @@ trap 'handle_interrupt' INT TERM
 trap 'handle_exit' EXIT
 
 APP_NAME="chakavak"
-if [[ -z "${INSTALL_DIR:-}" ]]; then
-  if [[ -d "/opt/chakavak" ]]; then
-    INSTALL_DIR="/opt/chakavak"
-  elif [[ -d "/opt/songbird" ]]; then
-    INSTALL_DIR="/opt/songbird"
-  else
-    INSTALL_DIR="/opt/chakavak"
-  fi
+if [[ -d "/opt/songbird" && ! -e "/opt/chakavak" ]]; then
+  mv /opt/songbird /opt/chakavak 2>/dev/null || true
+  ln -sf /opt/chakavak /opt/songbird 2>/dev/null || true
 fi
+INSTALL_DIR="${INSTALL_DIR:-/opt/chakavak}"
 LOG_FILE="${INSTALL_DIR}/logs/install.log"
 DATA_COMMAND_LAUNCHER="${DATA_COMMAND_LAUNCHER:-${INSTALL_DIR}/scripts/run-data-command.sh}"
 REPO_URL="${REPO_URL:-https://github.com/iranacc/Chakavak.git}"
