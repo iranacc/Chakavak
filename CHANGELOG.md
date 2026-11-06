@@ -1,3 +1,8 @@
+## 0.23.1 - 2026-11-06
+
+### Fixed
+- **CallScreen Ref Null Pointer Fix**: Fixed critical `TypeError: Cannot set properties of null (setting 'srcObject')` error in `CallScreen.jsx` by properly guarding all React DOM ref assignment callbacks when elements unmount or switch layouts.
+
 ## 0.23.0 - 2026-11-06
 
 ### Fixed & Enhanced

@@ -255,7 +255,7 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteVideoRef === "function") {
         remoteVideoRef(node);
       } else {
-        if (remoteVideoRef.current?.srcObject && !node?.srcObject) {
+        if (node && remoteVideoRef.current?.srcObject && !node.srcObject) {
           node.srcObject = remoteVideoRef.current.srcObject;
         }
         remoteVideoRef.current = node;
@@ -273,7 +273,7 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteAudioRef === "function") {
         remoteAudioRef(node);
       } else {
-        if (remoteAudioRef.current?.srcObject && !node?.srcObject) {
+        if (node && remoteAudioRef.current?.srcObject && !node.srcObject) {
           node.srcObject = remoteAudioRef.current.srcObject;
         }
         remoteAudioRef.current = node;
@@ -292,6 +292,9 @@ export const CallScreen = memo(function CallScreen({
       } else {
         if (localVideoRef.current?.srcObject) {
           localStreamRef.current = localVideoRef.current.srcObject;
+        }
+        if (node && localVideoRef.current?.srcObject && !node.srcObject) {
+          node.srcObject = localVideoRef.current.srcObject;
         }
         localVideoRef.current = node;
       }
