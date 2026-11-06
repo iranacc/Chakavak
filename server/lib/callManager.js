@@ -28,7 +28,14 @@ export function createCallManager(deps) {
   const TURN_CREDENTIAL = env.TURN_CREDENTIAL || "";
 
   function getIceServers() {
-    const servers = [{ urls: TURN_STUN_URL }];
+    const stunList = [
+      TURN_STUN_URL,
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302",
+    ].filter(Boolean);
+    const uniqueStun = Array.from(new Set(stunList));
+    const servers = [{ urls: uniqueStun }];
     if (TURN_URL) {
       const urls = TURN_URL.includes(',')
         ? TURN_URL.split(',').map((u) => u.trim()).filter(Boolean)

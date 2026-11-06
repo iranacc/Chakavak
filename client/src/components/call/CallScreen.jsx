@@ -255,17 +255,14 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteVideoRef === "function") {
         remoteVideoRef(node);
       } else {
-        if (remoteVideoRef.current?.srcObject) {
-          remoteStreamRef.current = remoteVideoRef.current.srcObject;
+        if (remoteVideoRef.current?.srcObject && !node?.srcObject) {
+          node.srcObject = remoteVideoRef.current.srcObject;
         }
         remoteVideoRef.current = node;
       }
     }
     if (node) {
-      if (remoteStreamRef.current && node.srcObject !== remoteStreamRef.current) {
-        node.srcObject = remoteStreamRef.current;
-      }
-      node.muted = !isSpeakerOn;
+      node.muted = true;
       node.play?.().catch(() => {});
       trackVideoAspect(node, setRemoteAspect);
     }
@@ -276,16 +273,13 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteAudioRef === "function") {
         remoteAudioRef(node);
       } else {
-        if (remoteAudioRef.current?.srcObject) {
-          remoteStreamRef.current = remoteAudioRef.current.srcObject;
+        if (remoteAudioRef.current?.srcObject && !node?.srcObject) {
+          node.srcObject = remoteAudioRef.current.srcObject;
         }
         remoteAudioRef.current = node;
       }
     }
     if (node) {
-      if (remoteStreamRef.current && node.srcObject !== remoteStreamRef.current) {
-        node.srcObject = remoteStreamRef.current;
-      }
       node.muted = !isSpeakerOn;
       node.play?.().catch(() => {});
     }
@@ -675,6 +669,7 @@ export const CallScreen = memo(function CallScreen({
             ref={handleRemoteVideoRef}
             autoPlay
             playsInline
+            muted
             aria-label="Remote video"
             className="h-full w-full object-cover pointer-events-none"
           />
@@ -702,9 +697,7 @@ export const CallScreen = memo(function CallScreen({
             </div>
           </div>
         )}
-        {!remoteOn ? (
-          <audio ref={handleRemoteAudioRef} autoPlay playsInline className="hidden" />
-        ) : null}
+        <audio ref={handleRemoteAudioRef} autoPlay playsInline className="hidden" />
       </div>
     ) : (
       <div
@@ -730,9 +723,7 @@ export const CallScreen = memo(function CallScreen({
           } ${isCallClosing ? "sb-call-exit" : ""}`}
           style={restoredFromPip ? pipOriginStyle : undefined}
         >
-        {isConnected && !remoteOn ? (
-          <audio ref={handleRemoteAudioRef} autoPlay playsInline className="hidden" />
-        ) : null}
+        <audio ref={handleRemoteAudioRef} autoPlay playsInline className="hidden" />
 
         {/* Secure badge - very top */}
         <div className="absolute inset-x-0 top-0 z-30 flex justify-center pt-4">
@@ -852,6 +843,7 @@ export const CallScreen = memo(function CallScreen({
                 ref={handleRemoteVideoRef}
                 autoPlay
                 playsInline
+                muted
                 aria-label="Remote video"
                 className={remoteOn ? "h-full w-full object-contain" : "hidden"}
               />
@@ -901,6 +893,7 @@ export const CallScreen = memo(function CallScreen({
                 ref={handleRemoteVideoRef}
                 autoPlay
                 playsInline
+                muted
                 aria-label="Remote video"
                 className={
                   !isSwapped
@@ -935,6 +928,7 @@ export const CallScreen = memo(function CallScreen({
                   ref={handleRemoteVideoRef}
                   autoPlay
                   playsInline
+                  muted
                   aria-label="Remote video thumbnail"
                   className={remoteOn ? "h-full w-full object-cover" : "hidden"}
                 />

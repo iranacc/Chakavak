@@ -29,15 +29,20 @@ export const CALL_EXIT_MS = 250;
  * unusable; fall back to an audio-only call.
  */
 export async function acquireLocalMedia(wantsVideo) {
+  const audioConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: wantsVideo,
+      audio: audioConstraints,
+      video: wantsVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
     });
     return { stream, hasVideo: wantsVideo };
   } catch (err) {
     if (!wantsVideo) throw err;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
     return { stream, hasVideo: false };
   }
 }
@@ -127,7 +132,39 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     [realtimeSenderRef]
   );
 
-  // Fetch ICE servers once on mount
+  const getEffectiveIceServers = useCallback(() => {
+    if (iceServersRef.current && iceServersRef.current.length > 0) {
+      return iceServersRef.current;
+    }
+    return [
+      {
+        urls: [
+          "stun:chat.mbb724.ir:3478",
+          "stun:stun.l.google.com:19302",
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+        ],
+      },
+    ];
+  }, []);
+
+  const ensureIceServers = useCallback(async () => {
+    if (iceServersRef.current && iceServersRef.current.length > 0) {
+      return iceServersRef.current;
+    }
+    try {
+      const servers = await fetchIceServers();
+      if (Array.isArray(servers) && servers.length > 0) {
+        iceServersRef.current = servers;
+        return servers;
+      }
+    } catch (_) {}
+    const fallback = getEffectiveIceServers();
+    iceServersRef.current = fallback;
+    return fallback;
+  }, [getEffectiveIceServers]);
+
+  // Fetch ICE servers on mount and when call initiates
   useEffect(() => {
     let isCancelled = false;
     void fetchIceServers().then((servers) => {
@@ -301,7 +338,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
   }, [finishCall, postSignal]);
 
   const createPeerConnection = useCallback(() => {
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+    const iceServers = getEffectiveIceServers();
+    const pc = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 2,
+    });
 
     pc.onicecandidate = (event) => {
       if (event.candidate && callChatIdRef.current) {
@@ -313,48 +354,78 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     };
 
     pc.ontrack = (event) => {
-      remoteStreamRef.current = event.streams[0];
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
+      let stream = event.streams && event.streams[0];
+      if (!stream) {
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
+        }
+        if (event.track && !remoteStreamRef.current.getTracks().includes(event.track)) {
+          remoteStreamRef.current.addTrack(event.track);
+        }
+        stream = remoteStreamRef.current;
+      } else {
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = stream;
+        } else if (remoteStreamRef.current !== stream) {
+          stream.getTracks().forEach((track) => {
+            if (!remoteStreamRef.current.getTracks().includes(track)) {
+              remoteStreamRef.current.addTrack(track);
+            }
+          });
+        }
       }
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = event.streams[0];
+
+      const activeStream = remoteStreamRef.current;
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== activeStream) {
+        remoteVideoRef.current.srcObject = activeStream;
+        remoteVideoRef.current.play?.().catch(() => {});
+      }
+      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== activeStream) {
+        remoteAudioRef.current.srcObject = activeStream;
         remoteAudioRef.current.play?.().catch(() => {});
       }
       setRemoteStreamTick((t) => t + 1);
     };
 
+    const handleConnected = () => {
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current);
+        disconnectTimerRef.current = null;
+      }
+      setCallState("connected");
+      callStateRef.current = "connected";
+      if (!durationTimerRef.current) {
+        durationTimerRef.current = setInterval(() => {
+          setCallDuration((prev) => prev + 1);
+        }, 1000);
+      }
+    };
+
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
-        if (disconnectTimerRef.current) {
-          clearTimeout(disconnectTimerRef.current);
-          disconnectTimerRef.current = null;
-        }
-        setCallState("connected");
-        callStateRef.current = "connected";
-        if (!durationTimerRef.current) {
-          durationTimerRef.current = setInterval(() => {
-            setCallDuration((prev) => prev + 1);
-          }, 1000);
-        }
-      }
-      if (pc.connectionState === "disconnected") {
+        handleConnected();
+      } else if (pc.connectionState === "disconnected") {
         // Transient ICE blips are common; only hang up if it persists.
         if (!disconnectTimerRef.current) {
           disconnectTimerRef.current = setTimeout(() => {
             disconnectTimerRef.current = null;
             failCall();
-          }, 5000);
+          }, 6000);
         }
-      }
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         failCall();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        handleConnected();
       }
     };
 
     peerConnectionRef.current = pc;
     return pc;
-  }, [postSignal, failCall]);
+  }, [postSignal, failCall, getEffectiveIceServers]);
 
   // Start a call (caller)
   const startCall = useCallback(
@@ -399,6 +470,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       });
 
       try {
+        void ensureIceServers();
         const { stream: gotStream, hasVideo } = await acquireLocalMedia(
           type === "video",
         );
@@ -413,6 +485,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         setIsCameraUnavailable(type === "video" && !hasVideo);
         if (localVideoRef.current && hasVideo) {
           localVideoRef.current.srcObject = gotStream;
+          localVideoRef.current.play?.().catch(() => {});
         }
 
         const res = await postSignal("start", {
@@ -433,34 +506,35 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         finishCall("failed");
       }
     },
-    [postSignal, finishCall, clearEndTimers]
+    [postSignal, finishCall, clearEndTimers, ensureIceServers]
   );
 
   // Associate media streams with the media elements once they mount or when a
   // new remote stream arrives.
   useEffect(() => {
-    if (callState !== "connected") return;
-    if (localVideoRef.current && localStreamRef.current) {
+    if (callState === "idle") return;
+    if (localVideoRef.current && localStreamRef.current && localVideoRef.current.srcObject !== localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.play?.().catch(() => {});
     }
-    if (remoteVideoRef.current && remoteStreamRef.current) {
-      remoteVideoRef.current.srcObject = remoteStreamRef.current;
-    }
-    if (remoteAudioRef.current && remoteStreamRef.current) {
-      remoteAudioRef.current.srcObject = remoteStreamRef.current;
-      remoteAudioRef.current.play?.().catch(() => {});
+    if (remoteStreamRef.current) {
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        remoteVideoRef.current.play?.().catch(() => {});
+      }
+      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== remoteStreamRef.current) {
+        remoteAudioRef.current.srcObject = remoteStreamRef.current;
+        remoteAudioRef.current.play?.().catch(() => {});
+      }
     }
   }, [callState, callType, remoteStreamTick]);
 
-  // Speaker toggle flips mute on the remote media elements.
+  // Speaker toggle flips mute on the remote audio element.
   useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = !isSpeakerOn;
-    }
     if (remoteAudioRef.current) {
       remoteAudioRef.current.muted = !isSpeakerOn;
     }
-  }, [isSpeakerOn, callState, callType, remoteStreamTick]);
+  }, [isSpeakerOn]);
 
   // Sample WebRTC stats while connected to derive signal bars from
   // round-trip time (ping) and packet loss. Resets when the call ends.
@@ -529,6 +603,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     if (!chatId) return;
 
     try {
+      await ensureIceServers();
       const acceptedType = callTypeRef.current;
       const { stream, hasVideo } = await acquireLocalMedia(
         acceptedType === "video",
@@ -545,6 +620,12 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
 
       const pc = createPeerConnection();
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      if (!stream.getVideoTracks().length) {
+        try {
+          pc.addTransceiver("video", { direction: "recvonly" });
+        } catch (_) {}
+      }
 
       // Process queued candidates
       while (pendingCandidatesRef.current.length > 0) {
@@ -578,7 +659,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       finishCall("failed");
       await postSignal("reject", { chatId });
     }
-  }, [createPeerConnection, postSignal, finishCall]);
+  }, [createPeerConnection, postSignal, finishCall, ensureIceServers]);
 
   // Reject incoming call (callee)
   const rejectCall = useCallback(async () => {
@@ -994,6 +1075,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
             return;
           }
           try {
+            await ensureIceServers();
             const pc = createPeerConnection();
             if (localStreamRef.current) {
               localStreamRef.current
@@ -1002,7 +1084,9 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
             }
             
             if (!localStreamRef.current?.getVideoTracks().length) {
-              pc.addTransceiver("video", { direction: "recvonly" });
+              try {
+                pc.addTransceiver("video", { direction: "recvonly" });
+              } catch (_) {}
             }
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -1026,6 +1110,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
           }
           const sdpOffer = payload.sdp || payload.offer;
           try {
+            await ensureIceServers();
             let pc = peerConnectionRef.current;
             if (!pc) {
               pc = createPeerConnection();
@@ -1035,6 +1120,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
                   .forEach((track) =>
                     pc.addTrack(track, localStreamRef.current)
                   );
+              }
+              if (!localStreamRef.current?.getVideoTracks().length) {
+                try {
+                  pc.addTransceiver("video", { direction: "recvonly" });
+                } catch (_) {}
               }
             }
             await pc.setRemoteDescription(new RTCSessionDescription(sdpOffer));
@@ -1172,7 +1262,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
           break;
       }
     },
-    [createPeerConnection, postSignal, finishCall]
+    [createPeerConnection, postSignal, finishCall, ensureIceServers]
   );
 
   // Recover a call that started while this app was closed.

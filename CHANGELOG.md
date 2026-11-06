@@ -1,3 +1,13 @@
+## 0.23.0 - 2026-11-06
+
+### Fixed & Enhanced
+- **WebRTC Audio & Video Relay Transmission**:
+  - **Coturn TURN Server Authentication**: Fixed coturn database credential authorization by adding automatic user registration in Coturn's SQLite database (`turnadmin -a`) in `install.sh`.
+  - **Resilient ICE / STUN Resolution**: Added robust dynamic ICE resolution with multi-pool STUN fallbacks (`chat.mbb724.ir:3478`, `stun.l.google.com`, `stun1.l.google.com`) ensuring NAT traversal succeeds across restricted cellular networks.
+  - **Track Accumulation (`ontrack`)**: Hardened incoming WebRTC track processing to safely assemble audio and video tracks into a unified `MediaStream` even when browser delivers tracks without pre-associated stream objects.
+  - **Dedicated Remote Audio Engine**: Separated audio output into an unconditional, dedicated `<audio>` element with muted video elements to bypass browser autoplay policies and eliminate sound clipping and echo during PiP, swap, or split-screen toggles.
+  - **Crystal-Clear Audio Constraints**: Configured hardware echo cancellation, noise suppression, and automatic gain control on local media streams.
+
 ## 0.22.0 - 2026-11-06
 
 ### Fixed & Hardened

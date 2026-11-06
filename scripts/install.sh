@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chakavak-deploy-version: 0.22.0
+# chakavak-deploy-version: 0.23.0
 
 set -uo pipefail
 
@@ -220,7 +220,7 @@ resolve_script_version_for_path() {
 }
 
 CURRENT_SCRIPT_PATH="$(resolve_current_script_path 2>/dev/null || true)"
-SCRIPT_VERSION="0.22.0"$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.0.0")"
+SCRIPT_VERSION="$(extract_script_version "$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.23.0")"
 LAST_GLOBAL_COMMAND_VERSION=""
 
 log() {
@@ -3494,6 +3494,10 @@ EOF
     if run_as_root grep -q '^TURN_CREDENTIAL=' "$env_file" 2>/dev/null; then
       run_silent run_as_root sed -i "s|^TURN_CREDENTIAL=.*|TURN_CREDENTIAL=\"${COTURN_PASSWORD}\"|" "$env_file" || true
     fi
+  fi
+
+  if command -v turnadmin >/dev/null 2>&1; then
+    run_silent run_as_root turnadmin -a -u "${COTURN_USER}" -r "${COTURN_REALM}" -p "${COTURN_PASSWORD}" || true
   fi
 
   run_silent run_as_root systemctl restart coturn || true
