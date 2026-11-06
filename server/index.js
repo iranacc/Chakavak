@@ -200,7 +200,7 @@ import {
   SETTING_DEFS,
 } from "./lib/appSettings.js";
 
-process.title = "songbird-server";
+process.title = "chakavak-server";
 
 const app = express();
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -1513,7 +1513,7 @@ if (REMOTE_CHANNEL) {
 }
 
 const server = app.listen(port, bindAddress, () => {
-  console.log(`Songbird server running on http://${bindAddress}:${port}`);
+  console.log(`Chakavak server running on http://${bindAddress}:${port}`);
   console.log(
     `[server] Media worker webhook callback URL: ${apiDeps.webhookCallbackUrl}`,
   );

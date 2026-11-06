@@ -1717,7 +1717,7 @@ function registerAdminPanelRoutes(app, deps) {
 
   // ─── Service control ─────────────────────────────────────────────────────────
 
-  const SERVICE_NAME = process.env.SONGBIRD_SERVICE_NAME || "songbird";
+  const SERVICE_NAME = process.env.CHAKAVAK_SERVICE_NAME || process.env.SONGBIRD_SERVICE_NAME || "chakavak";
 
   // Sends a POST request to the Docker Engine API via the Unix socket to
   // restart or stop this container. The container name / ID is read from the

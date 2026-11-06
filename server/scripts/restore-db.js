@@ -23,7 +23,7 @@ dotenv.config({ path: path.join(serverDir, ".env"), override: true, quiet: true 
 
 const dbPath = path.join(dataDir, "songbird.db");
 const backupDir = path.join(dataDir, "backups");
-const serviceName = process.env.SONGBIRD_SERVICE_NAME || "songbird.service";
+const serviceName = process.env.CHAKAVAK_SERVICE_NAME || process.env.SONGBIRD_SERVICE_NAME || "chakavak.service";
 const serviceUser = process.env.SONGBIRD_SERVICE_USER || "songbird";
 const serviceGroup = process.env.SONGBIRD_SERVICE_GROUP || serviceUser;
 

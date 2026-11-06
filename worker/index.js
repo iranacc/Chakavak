@@ -18,7 +18,7 @@ import {
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRootDir = path.resolve(workerDir, "..");
 
-process.title = "songbird-worker";
+process.title = "chakavak-worker";
 
 if (typeof process.loadEnvFile === "function") {
   try { process.loadEnvFile(path.join(projectRootDir, ".env")); } catch {}
@@ -800,7 +800,7 @@ if (
 ) {
   server.listen(PORT, () => {
     console.log(
-      `[songbird-worker] listening on port ${PORT} (storage: ${storage.type})`,
+      `[chakavak-worker] listening on port ${PORT} (storage: ${storage.type})`,
     );
   });
 

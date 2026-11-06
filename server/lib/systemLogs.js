@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRootDir = path.resolve(serverDir, "..", "..");
 
-const SERVICE_NAME = process.env.SONGBIRD_SERVICE_NAME || "songbird.service";
-const WORKER_SERVICE_NAME = process.env.SONGBIRD_WORKER_SERVICE_NAME || "songbird-worker.service";
+const SERVICE_NAME = process.env.CHAKAVAK_SERVICE_NAME || process.env.SONGBIRD_SERVICE_NAME || "chakavak.service";
+const WORKER_SERVICE_NAME = process.env.CHAKAVAK_WORKER_SERVICE_NAME || process.env.SONGBIRD_WORKER_SERVICE_NAME || "chakavak-worker.service";
 
 // Candidate paths for each log source. The first readable one wins.
 const INSTALLER_LOG_CANDIDATES = [

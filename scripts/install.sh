@@ -45,12 +45,12 @@ INSTALL_DIR="/opt/songbird"
 LOG_FILE="/opt/songbird/logs/install.log"
 DATA_COMMAND_LAUNCHER="${DATA_COMMAND_LAUNCHER:-${INSTALL_DIR}/scripts/run-data-command.sh}"
 REPO_URL="${REPO_URL:-https://github.com/iranacc/Chakavak.git}"
-SERVICE_USER="songbird"
-SERVICE_GROUP="songbird"
-SERVICE_NAME="songbird"
-SERVICE_FILE="/etc/systemd/system/songbird.service"
-WORKER_SERVICE_NAME="songbird-worker"
-WORKER_SERVICE_FILE="/etc/systemd/system/songbird-worker.service"
+SERVICE_USER="chakavak"
+SERVICE_GROUP="chakavak"
+SERVICE_NAME="chakavak"
+SERVICE_FILE="/etc/systemd/system/chakavak.service"
+WORKER_SERVICE_NAME="chakavak-worker"
+WORKER_SERVICE_FILE="/etc/systemd/system/chakavak-worker.service"
 LEGO_RENEW_SERVICE_FILE="/etc/systemd/system/songbird-lego-renew.service"
 LEGO_RENEW_TIMER_FILE="/etc/systemd/system/songbird-lego-renew.timer"
 NGINX_SITE_FILE="/etc/nginx/sites-available/songbird"
@@ -2859,7 +2859,7 @@ configure_systemd_service() {
   fi
   if ! run_silent run_as_root tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
-Description=Songbird server
+Description=Chakavak server
 After=network.target
 
 [Service]
@@ -2882,7 +2882,7 @@ EOF
   log "Creating worker systemd service at ${WORKER_SERVICE_FILE}..."
   if ! run_silent run_as_root tee "$WORKER_SERVICE_FILE" >/dev/null <<EOF
 [Unit]
-Description=Songbird media worker
+Description=Chakavak media worker
 After=network.target ${SERVICE_NAME}.service
 
 [Service]
