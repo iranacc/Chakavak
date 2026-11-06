@@ -2945,6 +2945,10 @@ write_nginx_site_config() {
   local cert_line_path="$cert_path"
   local key_line_path="$key_path"
   local current_listen_line=""
+  local server_name_line="server_name ${NGINX_SERVER_NAME};"
+  if [[ "$DEPLOY_MODE" == "domain" && ${#DOMAIN_NAMES[@]} -gt 0 ]]; then
+    server_name_line="server_name ${DOMAIN_NAMES[*]};"
+  fi
 
   if [[ "$mode" == "http" && "$CERT_MODE" == "certbot" ]]; then
     listen_line="listen 80 default_server;"
@@ -4292,9 +4296,15 @@ install_global_command_from_path() {
     rm -f "$temp_target"
     return 1
   fi
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/chakavak" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
+  fi
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/chakavak-deploy" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
+  fi
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/songbird-deploy" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
+  fi
 
   rm -f "$temp_target"
   LAST_GLOBAL_COMMAND_VERSION="$install_version"
@@ -4317,9 +4327,15 @@ install_global_command_from_remote() {
     rm -f "$temp_target"
     return 1
   fi
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
-  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/chakavak" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
+  fi
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/chakavak-deploy" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
+  fi
+  if [[ "$GLOBAL_COMMAND_PATH" != "/usr/local/bin/songbird-deploy" ]]; then
+    run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
+  fi
   rm -f "$temp_target"
   LAST_GLOBAL_COMMAND_VERSION="$install_version"
   return 0
