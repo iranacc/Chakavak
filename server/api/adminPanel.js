@@ -1711,7 +1711,7 @@ function registerAdminPanelRoutes(app, deps) {
     // dropdb --force terminates this server's own pool. Run it only after the
     // process has stopped, using the CLI command that enforces that condition.
     return res.status(409).json({
-      error: "Stop Songbird, then run npm run db:delete -- -y to delete a PostgreSQL database.",
+      error: "Stop Chakavak, then run npm run db:delete -- -y to delete a PostgreSQL database.",
     });
   });
 
@@ -1724,7 +1724,7 @@ function registerAdminPanelRoutes(app, deps) {
   // HOSTNAME env var, which Docker sets to the container ID by default, and
   // can be overridden with SONGBIRD_CONTAINER_NAME for named containers.
   const runDockerAction = (action) => new Promise((resolve) => {
-    const container = process.env.SONGBIRD_CONTAINER_NAME || process.env.HOSTNAME || "songbird";
+    const container = process.env.CHAKAVAK_CONTAINER_NAME || process.env.SONGBIRD_CONTAINER_NAME || process.env.HOSTNAME || "chakavak";
     const socketPath = "/var/run/docker.sock";
     // action is "restart" or "stop" — both are POST endpoints in the Docker API.
     const path = `/containers/${container}/${action}`;
@@ -1989,7 +1989,7 @@ function registerAdminPanelRoutes(app, deps) {
       // database connections. The offline CLI detects a running server first.
       if (dbConfig?.client === "postgres") {
         return res.status(409).json({
-          error: "Stop Songbird, then run npm run db:restore -- -y --file <backup.dump>.",
+          error: "Stop Chakavak, then run npm run db:restore -- -y --file <backup.dump>.",
         });
       }
       next();

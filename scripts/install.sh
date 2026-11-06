@@ -40,9 +40,17 @@ handle_interrupt() {
 trap 'handle_interrupt' INT TERM
 trap 'handle_exit' EXIT
 
-APP_NAME="songbird"
-INSTALL_DIR="/opt/songbird"
-LOG_FILE="/opt/songbird/logs/install.log"
+APP_NAME="chakavak"
+if [[ -z "${INSTALL_DIR:-}" ]]; then
+  if [[ -d "/opt/chakavak" ]]; then
+    INSTALL_DIR="/opt/chakavak"
+  elif [[ -d "/opt/songbird" ]]; then
+    INSTALL_DIR="/opt/songbird"
+  else
+    INSTALL_DIR="/opt/chakavak"
+  fi
+fi
+LOG_FILE="${INSTALL_DIR}/logs/install.log"
 DATA_COMMAND_LAUNCHER="${DATA_COMMAND_LAUNCHER:-${INSTALL_DIR}/scripts/run-data-command.sh}"
 REPO_URL="${REPO_URL:-https://github.com/iranacc/Chakavak.git}"
 SERVICE_USER="chakavak"
@@ -51,10 +59,10 @@ SERVICE_NAME="chakavak"
 SERVICE_FILE="/etc/systemd/system/chakavak.service"
 WORKER_SERVICE_NAME="chakavak-worker"
 WORKER_SERVICE_FILE="/etc/systemd/system/chakavak-worker.service"
-LEGO_RENEW_SERVICE_FILE="/etc/systemd/system/songbird-lego-renew.service"
-LEGO_RENEW_TIMER_FILE="/etc/systemd/system/songbird-lego-renew.timer"
-NGINX_SITE_FILE="/etc/nginx/sites-available/songbird"
-NGINX_ENABLED_FILE="/etc/nginx/sites-enabled/songbird"
+LEGO_RENEW_SERVICE_FILE="/etc/systemd/system/chakavak-lego-renew.service"
+LEGO_RENEW_TIMER_FILE="/etc/systemd/system/chakavak-lego-renew.timer"
+NGINX_SITE_FILE="/etc/nginx/sites-available/chakavak"
+NGINX_ENABLED_FILE="/etc/nginx/sites-enabled/chakavak"
 DEFAULT_SERVER_PORT="5174"
 DEFAULT_CLIENT_PORT="80"
 DEFAULT_WORKER_PORT="8080"
@@ -69,11 +77,11 @@ DEFAULT_CHAT_VOICE_WAVEFORM_MAX_DECODE_SECONDS="480"
 NODE_MAJOR="24"
 SCRIPT_REMOTE_URL="${SCRIPT_REMOTE_URL:-https://raw.githubusercontent.com/iranacc/Chakavak/main/scripts/install.sh}"
 LOG_LINES="${LOG_LINES:-100}"
-CERT_INSTALL_DIR="/etc/ssl/songbird"
-ACME_WEBROOT="/var/lib/songbird/certbot"
-LEGO_STATE_DIR="/var/lib/songbird/lego"
+CERT_INSTALL_DIR="/etc/ssl/chakavak"
+ACME_WEBROOT="/var/lib/chakavak/certbot"
+LEGO_STATE_DIR="/var/lib/chakavak/lego"
 LEGO_BIN="/usr/local/bin/lego"
-GLOBAL_COMMAND_PATH="/usr/local/bin/chakavak-deploy"
+GLOBAL_COMMAND_PATH="/usr/local/bin/chakavak"
 CHAKAVAK_SOCIAL_GITHUB="https://github.com/iranacc/Chakavak"
 CHAKAVAK_SOCIAL_TELEGRAM="https://t.me/iranacc"
 CHAKAVAK_SOCIAL_WEBSITE="https://chat.mbb724.ir"
@@ -96,7 +104,7 @@ CERTBOT_EMAIL=""
 DEFAULT_DB_CLIENT="sqlite3"
 DEFAULT_POSTGRES_HOST="127.0.0.1"
 DEFAULT_POSTGRES_PORT="5432"
-DEFAULT_POSTGRES_DB="songbird"
+DEFAULT_POSTGRES_DB="chakavak"
 DEFAULT_POSTGRES_USER="postgres"
 DEFAULT_POSTGRES_PASSWORD="postgres"
 DEFAULT_POSTGRES_URL=""
@@ -135,7 +143,7 @@ COTURN_MIN_PORT="${COTURN_MIN_PORT:-49152}"
 COTURN_MAX_PORT="${COTURN_MAX_PORT:-65535}"
 COTURN_EXTERNAL_IP="${COTURN_EXTERNAL_IP:-}"
 COTURN_REALM="${COTURN_REALM:-}"
-COTURN_USER="${COTURN_USER:-songbird}"
+COTURN_USER="${COTURN_USER:-chakavak}"
 COTURN_PASSWORD="${COTURN_PASSWORD:-}"
 COTURN_CONF_FILE="${COTURN_CONF_FILE:-/etc/turnserver.conf}"
 COTURN_DEFAULT_FILE="${COTURN_DEFAULT_FILE:-/etc/default/coturn}"
@@ -1570,8 +1578,8 @@ ensure_service_user_exists() {
 
   # Install a passwordless sudoers drop-in so the service process can
   # control its own systemd unit and read nginx/service logs via sudo -n.
-  local sudoers_drop_in="/etc/sudoers.d/songbird"
-  local sudoers_content="# Songbird — allow the service user to control its own unit
+  local sudoers_drop_in="/etc/sudoers.d/chakavak"
+  local sudoers_content="# Chakavak — allow the service user to control its own unit
 # and read privileged logs without a password.
 ${SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${SERVICE_NAME}
 ${SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl stop ${SERVICE_NAME}
@@ -1584,6 +1592,9 @@ ${SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/cat /var/log/nginx/access.log
 ${SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/nginx -t
 ${SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
 "
+  if [[ -f "/etc/sudoers.d/songbird" ]]; then
+    run_silent run_as_root rm -f "/etc/sudoers.d/songbird" || true
+  fi
   
   # Always validate and install/update the sudoers drop-in
   if run_as_root bash -c "printf '%s' $(printf '%q' "$sudoers_content") | visudo -c -f /dev/stdin" >/dev/null 2>&1; then
@@ -1759,12 +1770,15 @@ prepare_install_dir_for_offline() {
 }
 
 find_offline_source_zip() {
-  local zip_name="songbird.zip"
   local candidates=(
-    "$(pwd)/${zip_name}"
-    "$HOME/${zip_name}"
-    "/root/${zip_name}"
-    "/${zip_name}"
+    "$(pwd)/chakavak.zip"
+    "$HOME/chakavak.zip"
+    "/root/chakavak.zip"
+    "/chakavak.zip"
+    "$(pwd)/songbird.zip"
+    "$HOME/songbird.zip"
+    "/root/songbird.zip"
+    "/songbird.zip"
   )
   local candidate=""
   for candidate in "${candidates[@]}"; do
@@ -1780,13 +1794,14 @@ find_restore_backup_path() {
   local extension=""
   extension="$(database_backup_extension)"
   local candidates=(
+    "${INSTALL_DIR}/data/backups"
     "/opt/songbird/data/backups"
     "/root"
   )
   local dir=""
   for dir in "${candidates[@]}"; do
     local found=""
-    found="$(run_as_root_output bash -lc "find '$dir' -maxdepth 1 -type f -name 'songbird-backup-*${extension}' -printf '%T@\t%p\n' 2>/dev/null | sort -nr | head -1 | cut -f2-" | tr -d '\r\n')" || found=""
+    found="$(run_as_root_output bash -lc "find '$dir' -maxdepth 1 -type f \( -name 'chakavak-backup-*${extension}' -o -name 'songbird-backup-*${extension}' \) -printf '%T@\t%p\n' 2>/dev/null | sort -nr | head -1 | cut -f2-" | tr -d '\r\n')" || found=""
     if [[ -n "$found" && -f "$found" ]]; then
       printf "%s" "$found"
       return 0
@@ -1826,7 +1841,7 @@ ensure_offline_source_ready() {
   local zip_path=""
   zip_path="$(find_offline_source_zip)" || zip_path=""
   if [[ -z "$zip_path" ]]; then
-    warn "Offline ${mode_label} requires songbird.zip to be available in the current directory, user home, /root, or /."
+    warn "Offline ${mode_label} requires chakavak.zip (or songbird.zip) to be available in the current directory, user home, /root, or /."
     press_enter_to_continue
     return 1
   fi
@@ -2036,7 +2051,7 @@ update_source_from_zip() {
   run_silent run_as_root rm -rf "$tmp_dir" || return 1
 }
 
-install_songbird_dependencies() {
+install_chakavak_dependencies() {
   local npm_registry_arg=""
   if [[ -n "$MIRROR_NPM" ]]; then
     npm_registry_arg="--registry $(printf '%q' "$MIRROR_NPM")"
@@ -2053,6 +2068,10 @@ install_songbird_dependencies() {
 
   log "Building client..."
   run_in_install_dir "npm --prefix client run build" || return 1
+}
+
+install_songbird_dependencies() {
+  install_chakavak_dependencies "$@"
 }
 
 get_existing_env_value() {
@@ -2291,7 +2310,7 @@ ensure_env_secret() {
   else
     local data_dir=""
     data_dir="$(get_existing_env_value "DATA_DIR" "${INSTALL_DIR}/data")"
-    if [[ -f "${data_dir}/songbird.db" ]]; then
+    if [[ -f "${data_dir}/chakavak.db" || -f "${data_dir}/songbird.db" ]]; then
       log "Existing SQLite database found; leaving ${key} for the server to restore from it."
       return 0
     fi
@@ -2349,7 +2368,7 @@ APP_ENV=production
 DB_CLIENT=${DB_CLIENT:-sqlite3}
 POSTGRES_HOST=${POSTGRES_HOST:-127.0.0.1}
 POSTGRES_PORT=${POSTGRES_PORT:-5432}
-POSTGRES_DB=${POSTGRES_DB:-songbird}
+POSTGRES_DB=${POSTGRES_DB:-chakavak}
 POSTGRES_USER=${POSTGRES_USER:-postgres}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
 POSTGRES_URL=${POSTGRES_URL:-}
@@ -2422,7 +2441,7 @@ ensure_vapid_keys() {
   fi
   local data_dir=""
   data_dir="$(get_existing_env_value "DATA_DIR" "${INSTALL_DIR}/data")"
-  if ! is_postgres_client && [[ -f "${data_dir}/songbird.db" ]]; then
+  if ! is_postgres_client && [[ -f "${data_dir}/chakavak.db" || -f "${data_dir}/songbird.db" ]]; then
     log "Existing SQLite database found; leaving VAPID keys for the server to restore from the database."
     return 0
   fi
@@ -2903,15 +2922,15 @@ EOF
   fi
 
   run_as_root systemctl daemon-reload || return 1
-  run_as_root systemctl enable songbird.service || return 1
-  run_as_root systemctl enable songbird-worker.service || return 1
-  run_as_root systemctl restart songbird.service || return 1
+  run_as_root systemctl enable "${SERVICE_NAME}.service" || return 1
+  run_as_root systemctl enable "${WORKER_SERVICE_NAME}.service" || return 1
+  run_as_root systemctl restart "${SERVICE_NAME}.service" || return 1
   if [[ -n "${DB_BACKUP_PATH:-}" ]]; then
     wait_for_server_secrets 600 || true
   else
     wait_for_server_secrets || true
   fi
-  run_as_root systemctl restart songbird-worker.service || return 1
+  run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || return 1
 }
 
 write_nginx_site_config() {
@@ -3262,7 +3281,7 @@ configure_lego_renewal_timer() {
   log "Creating lego renewal service at ${LEGO_RENEW_SERVICE_FILE}..."
   if ! run_silent run_as_root tee "$LEGO_RENEW_SERVICE_FILE" >/dev/null <<EOF
 [Unit]
-Description=Renew Songbird IP certificate with lego
+Description=Renew Chakavak IP certificate with lego
 After=network-online.target nginx.service
 Wants=network-online.target
 
@@ -3283,7 +3302,7 @@ EOF
   log "Creating lego renewal timer at ${LEGO_RENEW_TIMER_FILE}..."
   if ! run_silent run_as_root tee "$LEGO_RENEW_TIMER_FILE" >/dev/null <<EOF
 [Unit]
-Description=Run Songbird lego renewal twice daily
+Description=Run Chakavak lego renewal twice daily
 
 [Timer]
 OnBootSec=10m
@@ -3299,7 +3318,7 @@ EOF
   fi
 
   run_as_root systemctl daemon-reload || return 1
-  run_as_root systemctl enable --now songbird-lego-renew.timer || return 1
+  run_as_root systemctl enable --now "${SERVICE_NAME}-lego-renew.timer" || return 1
 }
 
 configure_selfsigned_ssl() {
@@ -3320,7 +3339,7 @@ configure_selfsigned_ssl() {
 
   log "Running gen-certs.sh for CN=${cn}..."
   # gen-certs.sh writes to <repo>/certs/ by default, but for a bare-metal install
-  # we want the certs in CERT_INSTALL_DIR (/etc/ssl/songbird). We temporarily
+  # we want the certs in CERT_INSTALL_DIR (/etc/ssl/chakavak). We temporarily
   # override the output directory by symlinking, then copy to the final location.
   run_silent run_as_root mkdir -p "$CERT_INSTALL_DIR" || return 1
 
@@ -3422,7 +3441,7 @@ configure_coturn() {
   if [[ -z "$COTURN_PASSWORD" ]]; then
     COTURN_PASSWORD="$(generate_secret_hex 2>/dev/null || od -An -tx1 -N32 /dev/urandom 2>/dev/null | tr -d ' \n' || printf "secret%s" "$RANDOM$RANDOM")"
   fi
-  COTURN_USER="${COTURN_USER:-songbird}"
+  COTURN_USER="${COTURN_USER:-chakavak}"
 
   if run_as_root test -f "$default_file"; then
     if run_as_root grep -q "TURNSERVER_ENABLED" "$default_file"; then
@@ -3536,14 +3555,20 @@ run_migrations() {
   run_in_install_dir "npm --prefix server run db:migrate" || return 1
 }
 
-songbird_service_is_running() {
-  if have_cmd systemctl && systemctl is-active --quiet songbird.service 2>/dev/null; then
-    return 0
+chakavak_service_is_running() {
+  if have_cmd systemctl; then
+    if systemctl is-active --quiet "${SERVICE_NAME}.service" 2>/dev/null || systemctl is-active --quiet songbird.service 2>/dev/null; then
+      return 0
+    fi
   fi
   return 1
 }
 
-songbird_healthcheck_responds() {
+songbird_service_is_running() {
+  chakavak_service_is_running "$@"
+}
+
+chakavak_healthcheck_responds() {
   local port="$1"
 
   if have_cmd curl; then
@@ -3585,7 +3610,11 @@ setTimeout(() => process.exit(1), 800).unref();
   return 1
 }
 
-ensure_songbird_stopped_for_update() {
+songbird_healthcheck_responds() {
+  chakavak_healthcheck_responds "$@"
+}
+
+ensure_chakavak_stopped_for_update() {
   local port=""
   port="$(get_existing_env_value_with_fallback "SERVER_PORT" "PORT" "$DEFAULT_SERVER_PORT")"
   port="$(sanitize_input_value "$port")"
@@ -3595,26 +3624,28 @@ ensure_songbird_stopped_for_update() {
 
   log "Checking whether Chakavak is running before update..."
 
-  if songbird_service_is_running; then
+  if chakavak_service_is_running; then
     log "Chakavak service is running. Stopping it before update..."
-    if ! run_as_root systemctl stop songbird.service; then
-      warn "Failed to stop Chakavak service. Stop it manually before updating."
-      press_enter_to_continue
-      return 1
-    fi
-    if have_cmd systemctl && systemctl is-active --quiet songbird-worker.service 2>/dev/null; then
-      run_as_root systemctl stop songbird-worker.service || true
+    run_as_root systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
+    run_as_root systemctl stop songbird.service 2>/dev/null || true
+    if have_cmd systemctl; then
+      systemctl is-active --quiet "${WORKER_SERVICE_NAME}.service" 2>/dev/null && run_as_root systemctl stop "${WORKER_SERVICE_NAME}.service" || true
+      systemctl is-active --quiet songbird-worker.service 2>/dev/null && run_as_root systemctl stop songbird-worker.service || true
     fi
     log "Chakavak service stopped."
   fi
 
-  if songbird_healthcheck_responds "$port"; then
+  if chakavak_healthcheck_responds "$port"; then
     warn "Chakavak is still running on port ${port}. Stop it before updating."
     press_enter_to_continue
     return 1
   fi
 
   return 0
+}
+
+ensure_songbird_stopped_for_update() {
+  ensure_chakavak_stopped_for_update "$@"
 }
 
 update_nginx_runtime_values() {
@@ -3661,9 +3692,13 @@ rebuild_and_restart_after_settings_change() {
   run_in_install_dir "npm --prefix client run build" || return 1
 
   log "Restarting Chakavak service..."
-  run_as_root systemctl restart songbird.service || return 1
-  if have_cmd systemctl && systemctl list-unit-files | grep -q "^songbird-worker.service"; then
-    run_as_root systemctl restart songbird-worker.service || true
+  run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || return 1
+  if have_cmd systemctl; then
+    if systemctl list-unit-files | grep -q "^${WORKER_SERVICE_NAME}.service"; then
+      run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || true
+    elif systemctl list-unit-files | grep -q "^songbird-worker.service"; then
+      run_as_root systemctl restart songbird-worker.service || true
+    fi
   fi
 
   if [[ "$needs_nginx" == "yes" ]]; then
@@ -3674,14 +3709,14 @@ rebuild_and_restart_after_settings_change() {
   fi
 }
 
-update_songbird() {
+update_chakavak() {
   if [[ ! -d "$INSTALL_DIR" ]]; then
     warn "No Chakavak install found at ${INSTALL_DIR}."
     press_enter_to_continue
     return 0
   fi
 
-  ensure_songbird_stopped_for_update || return 1
+  ensure_chakavak_stopped_for_update || return 1
 
   if [[ "$(prompt_yes_no "Create a database backup before updating?" "no")" == "yes" ]]; then
     backup_database || return 1
@@ -3754,7 +3789,7 @@ update_songbird() {
     update_source_from_zip "$offline_zip_path" || return 1
 
     log "Installing dependencies..."
-    install_songbird_dependencies || return 1
+    install_chakavak_dependencies || return 1
     ensure_vapid_keys || return 1
 
     log "Synchronizing database schema with latest version..."
@@ -3775,9 +3810,13 @@ update_songbird() {
     fi
 
     log "Restarting Chakavak service..."
-    run_as_root systemctl restart songbird.service || return 1
-    if have_cmd systemctl && systemctl list-unit-files | grep -q "^songbird-worker.service"; then
-      run_as_root systemctl restart songbird-worker.service || true
+    run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || return 1
+    if have_cmd systemctl; then
+      if systemctl list-unit-files | grep -q "^${WORKER_SERVICE_NAME}.service"; then
+        run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || true
+      elif systemctl list-unit-files | grep -q "^songbird-worker.service"; then
+        run_as_root systemctl restart songbird-worker.service || true
+      fi
     fi
     run_as_root systemctl reload nginx || return 1
 
@@ -3876,7 +3915,7 @@ update_songbird() {
   fi
 
   log "Installing dependencies..."
-  install_songbird_dependencies || return 1
+  install_chakavak_dependencies || return 1
   ensure_vapid_keys || return 1
   
   log "Synchronizing database schema with latest version..."
@@ -3897,9 +3936,13 @@ update_songbird() {
   fi
 
   log "Restarting Chakavak service..."
-  run_as_root systemctl restart songbird.service || return 1
-  if have_cmd systemctl && systemctl list-unit-files | grep -q "^songbird-worker.service"; then
-    run_as_root systemctl restart songbird-worker.service || true
+  run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || return 1
+  if have_cmd systemctl; then
+    if systemctl list-unit-files | grep -q "^${WORKER_SERVICE_NAME}.service"; then
+      run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || true
+    elif systemctl list-unit-files | grep -q "^songbird-worker.service"; then
+      run_as_root systemctl restart songbird-worker.service || true
+    fi
   fi
   run_as_root systemctl reload nginx || return 1
 
@@ -3907,16 +3950,24 @@ update_songbird() {
   press_enter_to_continue
 }
 
-restart_songbird() {
+restart_chakavak() {
   log "Restarting Chakavak service..."
-  run_as_root systemctl restart songbird.service || return 1
-  if have_cmd systemctl && systemctl list-unit-files | grep -q "^songbird-worker.service"; then
-    run_as_root systemctl restart songbird-worker.service || true
+  run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || return 1
+  if have_cmd systemctl; then
+    if systemctl list-unit-files | grep -q "^${WORKER_SERVICE_NAME}.service"; then
+      run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || true
+    elif systemctl list-unit-files | grep -q "^songbird-worker.service"; then
+      run_as_root systemctl restart songbird-worker.service || true
+    fi
   fi
   run_as_root systemctl reload nginx || return 1
 
   log "Chakavak restarted successfully."
   press_enter_to_continue
+}
+
+restart_songbird() {
+  restart_chakavak "$@"
 }
 
 edit_settings() {
@@ -4025,8 +4076,8 @@ free_service_port() {
   return 0
 }
 
-remove_songbird() {
-  if [[ ! -d "$INSTALL_DIR" ]]; then
+remove_chakavak() {
+  if [[ ! -d "$INSTALL_DIR" && ! -d "/opt/songbird" ]]; then
     warn "No install found at ${INSTALL_DIR}."
     press_enter_to_continue
     return 0
@@ -4042,30 +4093,30 @@ remove_songbird() {
   server_port="$(get_existing_env_value "SERVER_PORT" "$DEFAULT_SERVER_PORT")"
   worker_port="$(get_existing_env_value "WORKER_PORT" "$DEFAULT_WORKER_PORT")"
 
-  if run_as_root systemctl list-unit-files | grep -q "^songbird.service"; then
-    run_as_root systemctl disable --now songbird.service || true
-  fi
-  if run_as_root systemctl list-unit-files | grep -q "^songbird-worker.service"; then
-    run_as_root systemctl disable --now songbird-worker.service || true
-  fi
-  if run_as_root systemctl list-unit-files | grep -q "^songbird-lego-renew.timer"; then
-    run_as_root systemctl disable --now songbird-lego-renew.timer || true
-  fi
-  run_as_root rm -f "$SERVICE_FILE" "$WORKER_SERVICE_FILE"
-  run_as_root rm -f "$LEGO_RENEW_SERVICE_FILE" "$LEGO_RENEW_TIMER_FILE"
+  for svc in "${SERVICE_NAME}.service" "songbird.service" "${WORKER_SERVICE_NAME}.service" "songbird-worker.service" "${SERVICE_NAME}-lego-renew.timer" "songbird-lego-renew.timer"; do
+    if run_as_root systemctl list-unit-files | grep -q "^${svc}"; then
+      run_as_root systemctl disable --now "$svc" || true
+    fi
+  done
+  run_as_root rm -f "$SERVICE_FILE" "$WORKER_SERVICE_FILE" "/etc/systemd/system/songbird.service" "/etc/systemd/system/songbird-worker.service"
+  run_as_root rm -f "$LEGO_RENEW_SERVICE_FILE" "$LEGO_RENEW_TIMER_FILE" "/etc/systemd/system/songbird-lego-renew.service" "/etc/systemd/system/songbird-lego-renew.timer"
+  run_as_root rm -f "/etc/sudoers.d/chakavak" "/etc/sudoers.d/songbird"
   run_as_root systemctl daemon-reload
 
   free_service_port "$server_port" || true
   free_service_port "$worker_port" || true
 
-  run_as_root rm -f "$NGINX_ENABLED_FILE"
-  run_as_root rm -f "$NGINX_SITE_FILE"
+  run_as_root rm -f "$NGINX_ENABLED_FILE" "/etc/nginx/sites-enabled/songbird"
+  run_as_root rm -f "$NGINX_SITE_FILE" "/etc/nginx/sites-available/songbird"
   if run_as_root nginx -t >/dev/null 2>&1; then
     run_as_root systemctl reload nginx
   fi
 
   if [[ -d "$INSTALL_DIR" ]]; then
     run_as_root rm -rf "$INSTALL_DIR"
+  fi
+  if [[ -d "/opt/songbird" ]]; then
+    run_as_root rm -rf "/opt/songbird"
   fi
   if id -u "$SERVICE_USER" >/dev/null 2>&1; then
     run_as_root userdel "$SERVICE_USER" || true
@@ -4074,10 +4125,16 @@ remove_songbird() {
   log "Chakavak removed."
 
   if [[ -f "$GLOBAL_COMMAND_PATH" ]]; then
-    if [[ "$(prompt_yes_no "Remove global command (chakavak-deploy) as well?" "no")" == "yes" ]]; then
-      run_as_root rm -f "$GLOBAL_COMMAND_PATH"
+    if [[ "$(prompt_yes_no "Remove global command (chakavak) as well?" "no")" == "yes" ]]; then
+      run_as_root rm -f "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" "/usr/local/bin/songbird-deploy"
       log "Global command removed."
     fi
+  fi
+}
+
+remove_songbird() {
+  remove_chakavak "$@"
+}
   fi
 
   press_enter_to_continue
@@ -4147,7 +4204,7 @@ configure_push_proxy() {
   fi
   
   log "Restarting Chakavak service..."
-  if ! run_logged_quiet run_as_root systemctl restart songbird; then
+  if ! run_logged_quiet run_as_root systemctl restart "${SERVICE_NAME}"; then
     warn "Failed to restart service."
     press_enter_to_continue
     return 1
@@ -4159,23 +4216,11 @@ configure_push_proxy() {
   press_enter_to_continue
 }
 
-install_chakavak() {
-  install_songbird "$@"
-}
-
-update_chakavak() {
-  update_songbird "$@"
-}
-
-restart_chakavak() {
-  restart_songbird "$@"
-}
-
-remove_chakavak() {
-  remove_songbird "$@"
-}
-
 install_songbird() {
+  install_chakavak "$@"
+}
+
+install_chakavak() {
   prompt_source_mode
   collect_install_options
   prompt_database_choice
@@ -4196,7 +4241,7 @@ install_songbird() {
   ensure_log_dir || return 1
   write_full_env_with_defaults || return 1
   ensure_local_postgres_setup || return 1
-  install_songbird_dependencies || return 1
+  install_chakavak_dependencies || return 1
   RESTORE_BACKUP_QUIET="yes"
   if ! restore_backup_if_provided; then
     RESTORE_BACKUP_QUIET="no"
@@ -4253,6 +4298,8 @@ install_global_command_from_path() {
     rm -f "$temp_target"
     return 1
   fi
+  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
+  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
   run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
 
   rm -f "$temp_target"
@@ -4276,6 +4323,8 @@ install_global_command_from_remote() {
     rm -f "$temp_target"
     return 1
   fi
+  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak" || true
+  run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/chakavak-deploy" || true
   run_silent run_as_root ln -sf "$GLOBAL_COMMAND_PATH" "/usr/local/bin/songbird-deploy" || true
   rm -f "$temp_target"
   LAST_GLOBAL_COMMAND_VERSION="$install_version"
@@ -4431,10 +4480,16 @@ show_logs() {
 }
 
 show_service_logs() {
-  if systemctl list-units --type=service --all | grep songbird; then
+  local target_svc="${SERVICE_NAME}"
+  if ! systemctl list-units --type=service --all | grep -q "${SERVICE_NAME}"; then
+    if systemctl list-units --type=service --all | grep -q "songbird"; then
+      target_svc="songbird"
+    fi
+  fi
+  if systemctl list-units --type=service --all | grep -q "$target_svc"; then
     clear
     printf "\n  Last %s lines of Chakavak service log:\n\n" "$LOG_LINES"
-    run_as_root journalctl -u songbird --no-pager -n "$LOG_LINES"
+    run_as_root journalctl -u "$target_svc" --no-pager -n "$LOG_LINES"
   else
     printf "\n  Chakavak service not found.\n"
   fi
@@ -4442,10 +4497,16 @@ show_service_logs() {
 }
 
 show_worker_service_logs() {
-  if systemctl list-units --type=service --all | grep songbird-worker; then
+  local target_svc="${WORKER_SERVICE_NAME}"
+  if ! systemctl list-units --type=service --all | grep -q "${WORKER_SERVICE_NAME}"; then
+    if systemctl list-units --type=service --all | grep -q "songbird-worker"; then
+      target_svc="songbird-worker"
+    fi
+  fi
+  if systemctl list-units --type=service --all | grep -q "$target_svc"; then
     clear
     printf "\n  Last %s lines of Chakavak worker service log:\n\n" "$LOG_LINES"
-    run_as_root journalctl -u songbird-worker --no-pager -n "$LOG_LINES"
+    run_as_root journalctl -u "$target_svc" --no-pager -n "$LOG_LINES"
   else
     printf "\n  Chakavak worker service not found.\n"
   fi
@@ -4516,10 +4577,10 @@ show_ssl_status() {
   fi
 
   printf "\n  --- Active Domain in Nginx ---\n"
-  if [[ -f "/etc/nginx/sites-available/songbird" ]]; then
-    grep -E "server_name|ssl_certificate" /etc/nginx/sites-available/songbird || true
-  elif [[ -f "/etc/nginx/sites-available/chakavak" ]]; then
+  if [[ -f "/etc/nginx/sites-available/chakavak" ]]; then
     grep -E "server_name|ssl_certificate" /etc/nginx/sites-available/chakavak || true
+  elif [[ -f "/etc/nginx/sites-available/songbird" ]]; then
+    grep -E "server_name|ssl_certificate" /etc/nginx/sites-available/songbird || true
   fi
 
   printf "\n  --- Auto-Renewal Timers ---\n"
@@ -4575,8 +4636,8 @@ change_domain_and_ssl() {
     if run_as_root certbot certonly --nginx -d "${new_domain}" --non-interactive --agree-tos -m "${email_for_cert}"; then
       log "Certificate issued successfully for ${new_domain}."
 
-      local nginx_conf="/etc/nginx/sites-available/songbird"
-      [[ ! -f "$nginx_conf" ]] && nginx_conf="/etc/nginx/sites-available/chakavak"
+      local nginx_conf="/etc/nginx/sites-available/chakavak"
+      [[ ! -f "$nginx_conf" ]] && nginx_conf="/etc/nginx/sites-available/songbird"
 
       if [[ -f "$nginx_conf" ]]; then
         run_as_root sed -i -E "s/server_name [^;]+;/server_name ${new_domain};/" "$nginx_conf"
@@ -4589,11 +4650,14 @@ change_domain_and_ssl() {
         fi
       fi
 
-      if [[ -f "/opt/songbird/.env" ]]; then
-        run_as_root sed -i -E "s/^DOMAIN_NAME=.*/DOMAIN_NAME=${new_domain}/" /opt/songbird/.env 2>/dev/null || true
-        run_as_root sed -i -E "s/^VAPID_SUBJECT=.*/VAPID_SUBJECT=mailto:${email_for_cert}/" /opt/songbird/.env 2>/dev/null || true
-        log "Updated /opt/songbird/.env with new domain settings."
-        systemctl restart chakavak.service 2>/dev/null || systemctl restart songbird.service 2>/dev/null || true
+      local env_target="${INSTALL_DIR}/.env"
+      [[ ! -f "$env_target" && -f "/opt/songbird/.env" ]] && env_target="/opt/songbird/.env"
+
+      if [[ -f "$env_target" ]]; then
+        run_as_root sed -i -E "s/^DOMAIN_NAME=.*/DOMAIN_NAME=${new_domain}/" "$env_target" 2>/dev/null || true
+        run_as_root sed -i -E "s/^VAPID_SUBJECT=.*/VAPID_SUBJECT=mailto:${email_for_cert}/" "$env_target" 2>/dev/null || true
+        log "Updated ${env_target} with new domain settings."
+        systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || systemctl restart songbird.service 2>/dev/null || true
       fi
 
       log "Domain and SSL migration to ${new_domain} completed!"
