@@ -4126,14 +4126,12 @@ remove_chakavak() {
       log "Global command removed."
     fi
   fi
+
+  press_enter_to_continue
 }
 
 remove_songbird() {
   remove_chakavak "$@"
-}
-  fi
-
-  press_enter_to_continue
 }
 
 configure_push_proxy() {
