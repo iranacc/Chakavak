@@ -3796,7 +3796,7 @@ update_songbird() {
 
   # Fetch latest from remote
   log "Checking for updates..."
-  if ! run_in_install_dir "git fetch --all --prune --tags"; then
+  if ! run_in_install_dir "git fetch --all --prune --tags --force"; then
     warn "Failed to fetch from remote. Check your network and credentials."
     press_enter_to_continue
     return 1
