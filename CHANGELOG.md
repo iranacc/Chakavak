@@ -1,3 +1,22 @@
+## 0.22.0 - 2026-11-06
+
+### Fixed & Hardened
+- **Complete Purge of Legacy Names**: Replaced all remaining hardcoded `songbird` unit names, service files, and paths across installer scripts (`install.sh`, `run-data-command.sh`, and `docker-entrypoint.sh`) with standardized `chakavak` and `/opt/chakavak`.
+- **ChatPage Temporal Dead Zone (TDZ) Fix**: Fixed runtime `ReferenceError` during post-login initial render in `ChatPage.jsx` by properly moving state declarations ahead of all action handlers and callback dependencies.
+- **Client Error Boundary**: Added universal [`ErrorBoundary.jsx`](client/src/components/common/ErrorBoundary.jsx) wrapping core chat interfaces in `App.jsx` with graceful error handling and instant retry controls.
+- **SSL / Domain Auto-Renewal Manager**: Added full domain migration and configurable auto-renewal management tools directly in `chakavak` CLI menu.
+- **Service Worker Cache Invalidation**: Bumped service worker cache to `0.22.0` ensuring instant client bundle updates across client browsers.
+
+## 0.21.0 - 2026-11-06
+
+### Added
+- **E2EE Secret Chats**: End-to-end encrypted direct messaging using Web Crypto API (ECDH P-256 key exchange + AES-GCM 256-bit encryption), verification safety numbers, and emoji fingerprints.
+- **Persistent Voice Stages**: Clubhouse / Telegram-style audio stage rooms for groups and channels with raise-hand, mic controls, speaker moderation, and floating bar.
+- **Stickers & GIFs Engine**: Official Chakavak sticker packs, Tenor/Giphy animated GIF search integration, and lightweight tabbed picker.
+- **Polls & Quizzes**: Real-time anonymous and public polls with multi-choice options, quiz mode with instant answer reveal, and SSE synchronization.
+- **Scheduled & Silent Messages**: Message delivery scheduling with background worker and silent notification options.
+- **Chat Folders**: Categorized navigation tabs (All, Personal, Groups, Channels) with separate unread badges.
+
 ## 0.20.1 - 2026-11-05
 
 ### Bug Fixes

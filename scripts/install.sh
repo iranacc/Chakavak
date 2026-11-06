@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chakavak-deploy-version: 0.21.0
+# chakavak-deploy-version: 0.22.0
 
 set -uo pipefail
 
@@ -220,7 +220,7 @@ resolve_script_version_for_path() {
 }
 
 CURRENT_SCRIPT_PATH="$(resolve_current_script_path 2>/dev/null || true)"
-SCRIPT_VERSION="$(resolve_script_version_for_path "$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.0.0")"
+SCRIPT_VERSION="0.22.0"$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.0.0")"
 LAST_GLOBAL_COMMAND_VERSION=""
 
 log() {
