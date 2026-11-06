@@ -121,7 +121,8 @@ npm run docs:build           # بیلد مستندات
 - **عملیات دیتابیس (`server/db.js`)**: تمام کوئری‌های SQL باید داخل متدهای [`server/db.js`](server/db.js) کپسوله شوند. هرگز کوئری مستقیم SQL در فایل‌های دیگر نوشته نشود.
 - **ایزوله‌سازی تست‌های سرور**: فایل‌های `server/db.js` و `server/index.js` در لود اولیه ماژول وضعیت WASM و دیسک را بارگذاری می‌کنند و نباید مستقیم در تست‌ها ایمپورت شوند؛ برای تست‌های ادغام سرور همواره از کمکی `makeApp` در `server/test/helpers/makeApp.js` استفاده شود.
 - **رویدادهای بلادرنگ**: هرگونه تغییر داده (Mutation) باید از طریق توابع انتشار در `server/lib/sse.js` ارسال شود.
-- **مسیریابی کلاینت**: از React Router استفاده نمی‌شود. کنترل تاریخچه و صفحات در [`client/src/App.jsx`](client/src/App.jsx) از طریق `window.history` مدیریت می‌شود.
+- **مسیریابی کلاینت**: از React Router استفاده نمی‌شود. کنترل تاریخچه و صفحات در [`client/src/App.jsx`](client/src/App.jsx) از طریق `window.history` مدیریت می‌شود. همچنین تمامی کامپوننت‌های روت تحت پوشش [`ErrorBoundary.jsx`](client/src/components/common/ErrorBoundary.jsx) قرار دارند تا خطاهای رندر کلاینت مانع نمایش صفحه نشوند.
+- **ترتیب هوک‌ها و متغیرها در کامپوننت‌ها**: تمام استیت‌ها (`useState`) و رفرنس‌ها (`useRef`) باید اکیداً قبل از هوک‌های وابسته (`useCallback` و `useMemo` و `useEffect`) تعریف شوند تا خطای دسترسی به متغیر قبل از مقداردهی (Temporal Dead Zone) رخ ندهد.
 - **فراخوانی API در کلاینت**: تمام درخواست‌های HTTP کلاینت به سرور باید حتماً از طریق تابع `apiFetch` در [`client/src/api/chatApi.js`](client/src/api/chatApi.js) صورت گیرد تا `credentials: "include"` حفظ شود.
 - **به‌روزرسانی مستندات**: هر تغییری در مسیر `docs/` باید در هر دو نسخه انگلیسی (`docs/*.md`) و فارسی (`docs/fa/*.md`) اعمال شود.
 
