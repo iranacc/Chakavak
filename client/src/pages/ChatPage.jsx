@@ -799,6 +799,15 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   }, [chats]);
 
   const [showPollModal, setShowPollModal] = useState(false);
+  const [isSecretChatModal, setIsSecretChatModal] = useState(false);
+  const [safetyNumberModalOpen, setSafetyNumberModalOpen] = useState(false);
+  const [activeSafetyNumber, setActiveSafetyNumber] = useState("");
+  const [activeVoiceStages, setActiveVoiceStages] = useState({});
+  const [connectedStage, setConnectedStage] = useState(null);
+  const [voiceStageModalOpen, setVoiceStageModalOpen] = useState(false);
+  const [isStageMuted, setIsStageMuted] = useState(true);
+  const [isStageRaisedHand, setIsStageRaisedHand] = useState(false);
+  const [isStageSpeaking, setIsStageSpeaking] = useState(false);
 
   const handleCreatePoll = useCallback(
     async (pollData) => {
@@ -869,16 +878,6 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     setConnectedStage(null);
     setVoiceStageModalOpen(false);
   }, [connectedStage]);
-
-  const [isSecretChatModal, setIsSecretChatModal] = useState(false);
-  const [safetyNumberModalOpen, setSafetyNumberModalOpen] = useState(false);
-  const [activeSafetyNumber, setActiveSafetyNumber] = useState("");
-  const [activeVoiceStages, setActiveVoiceStages] = useState({});
-  const [connectedStage, setConnectedStage] = useState(null);
-  const [voiceStageModalOpen, setVoiceStageModalOpen] = useState(false);
-  const [isStageMuted, setIsStageMuted] = useState(true);
-  const [isStageRaisedHand, setIsStageRaisedHand] = useState(false);
-  const [isStageSpeaking, setIsStageSpeaking] = useState(false);
   const {
     chatsSearchQuery,
     setChatsSearchQuery,

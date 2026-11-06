@@ -5,6 +5,7 @@ import { APP_CONFIG, setMessageMaxChars } from './settings/appConfig.js'
 import { fetchAppInfo } from './api/appMetaApi.js'
 import { setNameLimits } from './utils/nameLimits.js'
 import { setChatPageConfig } from './settings/chatPageConfig.js'
+import ErrorBoundary from './components/common/ErrorBoundary.jsx'
 import InstallBar from './components/pwa/InstallBar.jsx'
 import InstallGuideModal from './components/pwa/InstallGuideModal.jsx'
 import {
@@ -1057,7 +1058,9 @@ export default function App() {
                   }
                   aria-hidden={route === 'admin' ? true : undefined}
                 >
-                  <ChatPage user={user} setUser={setUser} isDark={isDark} setIsDark={setIsDark} toggleTheme={toggleTheme} adminPanelEnabled={adminPanelEnabled} />
+                  <ErrorBoundary>
+                    <ChatPage user={user} setUser={setUser} isDark={isDark} setIsDark={setIsDark} toggleTheme={toggleTheme} adminPanelEnabled={adminPanelEnabled} />
+                  </ErrorBoundary>
                 </div>
               ) : null}
               {route === 'admin' && user && adminPanelEnabled ? (
