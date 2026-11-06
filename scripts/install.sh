@@ -4499,6 +4499,199 @@ EOF
 }
 
 
+
+# =============================================================================
+# SSL & Domain Management Menu
+# =============================================================================
+
+show_ssl_status() {
+  clear
+  show_banner
+  printf "\n  --- SSL & Domain Status ---\n\n"
+
+  if have_cmd certbot; then
+    run_as_root certbot certificates || true
+  else
+    printf "  Certbot is not installed.\n"
+  fi
+
+  printf "\n  --- Active Domain in Nginx ---\n"
+  if [[ -f "/etc/nginx/sites-available/songbird" ]]; then
+    grep -E "server_name|ssl_certificate" /etc/nginx/sites-available/songbird || true
+  elif [[ -f "/etc/nginx/sites-available/chakavak" ]]; then
+    grep -E "server_name|ssl_certificate" /etc/nginx/sites-available/chakavak || true
+  fi
+
+  printf "\n  --- Auto-Renewal Timers ---\n"
+  if have_cmd systemctl; then
+    systemctl list-timers --no-pager | grep -E "certbot|lego" || printf "  No active certbot/lego timers found.\n"
+  fi
+
+  printf "\n"
+  press_enter_to_continue
+}
+
+renew_ssl_now() {
+  clear
+  show_banner
+  printf "\n  Renewing SSL Certificates now...\n\n"
+
+  if have_cmd certbot; then
+    log "Running certbot renew --force-renewal..."
+    if run_as_root certbot renew --force-renewal; then
+      log "Certbot renew completed. Reloading nginx..."
+      run_as_root nginx -t && run_as_root systemctl reload nginx
+      log "SSL certificates renewed and nginx reloaded successfully."
+    else
+      warn "Certbot renewal failed. Check the logs above."
+    fi
+  else
+    warn "Certbot is not installed."
+  fi
+
+  press_enter_to_continue
+}
+
+change_domain_and_ssl() {
+  clear
+  show_banner
+  printf "\n  --- Change Domain & Issue New SSL Certificate ---\n\n"
+
+  local new_domain=""
+  new_domain="$(prompt_non_empty "Enter new domain name (e.g. chat.example.com)")"
+  if [[ -z "$new_domain" ]]; then
+    warn "Domain name cannot be empty."
+    press_enter_to_continue
+    return
+  fi
+
+  local email_for_cert=""
+  email_for_cert="$(prompt_default "Enter email for SSL renewal notifications" "admin@${new_domain}")"
+
+  log "Configuring domain: ${new_domain}..."
+
+  if have_cmd certbot; then
+    log "Requesting new SSL certificate for ${new_domain} via Certbot..."
+    if run_as_root certbot certonly --nginx -d "${new_domain}" --non-interactive --agree-tos -m "${email_for_cert}"; then
+      log "Certificate issued successfully for ${new_domain}."
+
+      local nginx_conf="/etc/nginx/sites-available/songbird"
+      [[ ! -f "$nginx_conf" ]] && nginx_conf="/etc/nginx/sites-available/chakavak"
+
+      if [[ -f "$nginx_conf" ]]; then
+        run_as_root sed -i -E "s/server_name [^;]+;/server_name ${new_domain};/" "$nginx_conf"
+        run_as_root sed -i -E "s#/etc/letsencrypt/live/[^/]+/#/etc/letsencrypt/live/${new_domain}/#g" "$nginx_conf"
+        if run_as_root nginx -t; then
+          run_as_root systemctl reload nginx
+          log "Nginx updated and reloaded with new domain ${new_domain}."
+        else
+          warn "Nginx config test failed after update. Please check ${nginx_conf}."
+        fi
+      fi
+
+      if [[ -f "/opt/songbird/.env" ]]; then
+        run_as_root sed -i -E "s/^DOMAIN_NAME=.*/DOMAIN_NAME=${new_domain}/" /opt/songbird/.env 2>/dev/null || true
+        run_as_root sed -i -E "s/^VAPID_SUBJECT=.*/VAPID_SUBJECT=mailto:${email_for_cert}/" /opt/songbird/.env 2>/dev/null || true
+        log "Updated /opt/songbird/.env with new domain settings."
+        systemctl restart chakavak.service 2>/dev/null || systemctl restart songbird.service 2>/dev/null || true
+      fi
+
+      log "Domain and SSL migration to ${new_domain} completed!"
+    else
+      warn "Failed to issue certificate for ${new_domain}. Make sure DNS records point to this server IP."
+    fi
+  else
+    warn "Certbot is not installed."
+  fi
+
+  press_enter_to_continue
+}
+
+configure_ssl_auto_renewal_schedule() {
+  clear
+  show_banner
+  printf "\n  --- Configure SSL Auto-Renewal Schedule ---\n\n"
+  printf "  1) Renew 30 days before expiry (Standard Let's Encrypt)\n"
+  printf "  2) Renew 60 days before expiry\n"
+  printf "  3) Renew 90 days before expiry\n"
+  printf "  4) Custom interval (in days)\n"
+  printf "  0) ↩️  Back\n\n"
+
+  prompt_read "Choose renewal interval option [0-4]: " choice
+  local interval_days=30
+  case "$choice" in
+    1) interval_days=30 ;;
+    2) interval_days=60 ;;
+    3) interval_days=90 ;;
+    4)
+      prompt_read "Enter interval in days (e.g. 45): " custom_days
+      if [[ "$custom_days" =~ ^[0-9]+$ ]] && (( custom_days > 0 )); then
+        interval_days="$custom_days"
+      else
+        warn "Invalid number of days. Using default: 30 days."
+        interval_days=30
+      fi
+      ;;
+    0) return ;;
+    *) warn "Invalid option."; press_enter_to_continue; return ;;
+  esac
+
+  log "Configuring automated renewal (renew_before_expiry = ${interval_days} days)..."
+
+  local cron_file="/etc/cron.d/chakavak-ssl-renew"
+  cat << CRON_EOF > /tmp/chakavak-ssl-renew
+# Chakavak SSL automated renewal check twice daily
+0 3,15 * * * root /usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+CRON_EOF
+
+  run_as_root cp /tmp/chakavak-ssl-renew "$cron_file"
+  run_as_root chmod 644 "$cron_file"
+  rm -f /tmp/chakavak-ssl-renew
+
+  local renewal_dir="/etc/letsencrypt/renewal"
+  if [[ -d "$renewal_dir" ]]; then
+    for conf in "$renewal_dir"/*.conf; do
+      if [[ -f "$conf" ]]; then
+        if grep -q "renew_before_expiry" "$conf"; then
+          run_as_root sed -i -E "s/^[# ]*renew_before_expiry[ ]*=.*/renew_before_expiry = ${interval_days} days/" "$conf"
+        else
+          run_as_root sed -i "1i renew_before_expiry = ${interval_days} days" "$conf"
+        fi
+        log "Updated $(basename "$conf") with renew_before_expiry = ${interval_days} days."
+      fi
+    done
+  fi
+
+  log "SSL auto-renewal schedule set to renew ${interval_days} days before expiry successfully!"
+  press_enter_to_continue
+}
+
+show_ssl_menu() {
+  while true; do
+    clear
+    show_banner
+    printf "\n"
+    printf "SSL & Domain Management\n"
+    printf $'1) 🔍  View SSL Status & Domains\n'
+    printf $'2) 🔄️  Renew SSL Certificate Now\n'
+    printf $'3) 🌐  Change Domain & Issue New SSL\n'
+    printf $'4) ⏰  Configure Auto-Renewal Schedule (30, 60, 90 days)\n'
+    printf $'5) ↩️  Go back\n'
+    printf $'0) 🚪  Exit\n\n'
+
+    prompt_read "Choose an option [0-5]: " choice
+    case "$choice" in
+      1) show_ssl_status ;;
+      2) renew_ssl_now ;;
+      3) change_domain_and_ssl ;;
+      4) configure_ssl_auto_renewal_schedule ;;
+      5) return ;;
+      0) exit 0 ;;
+      *) printf "Invalid choice. Select a number from 0 to 5.\n" ;;
+    esac
+  done
+}
+
 show_menu() {
   clear
   show_banner
@@ -4513,6 +4706,7 @@ show_menu() {
   printf $'7) 🔄️  Update menu\n'
   printf $'8) 🌐  Configure mirrors\n'
   printf $'9) 📋  View Logs\n'
+  printf $'10) 🔒  Manage SSL / Domain\n'
   printf $'0) 🚪  Exit\n\n'
 }
 
@@ -5496,7 +5690,7 @@ main() {
   local choice=""
   while true; do
     show_menu
-    prompt_read "Choose an option [0-9]: " choice
+    prompt_read "Choose an option [0-10]: " choice
     case "$choice" in
       1) run_menu_action install_chakavak ;;
       2) run_menu_action update_chakavak ;;
@@ -5507,8 +5701,9 @@ main() {
       7) run_menu_action update_menu ;;
       8) run_menu_action configure_mirrors_menu ;;
       9) run_menu_action show_logs_menu ;;
+      10) run_menu_action show_ssl_menu ;;
       0) break ;;
-      *) printf "Invalid choice. Select a number from 0 to 9.\n" ;;
+      *) printf "Invalid choice. Select a number from 0 to 10.\n" ;;
     esac
   done
 }
