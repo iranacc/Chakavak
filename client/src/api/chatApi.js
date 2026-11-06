@@ -388,6 +388,36 @@ export const closePoll = (payload) =>
     body: JSON.stringify(payload),
   });
 
+export const fetchScheduledMessages = async (chatId) => {
+  const res = await apiFetch(`${API_BASE}/api/messages/scheduled?chatId=${encodeURIComponent(chatId)}`);
+  const data = await res.json().catch(() => ({}));
+  data.json = async () => data;
+  data.ok = res.ok;
+  data.status = res.status;
+  return data;
+};
+
+export const scheduleMessage = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/scheduled/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const sendScheduledMessageNow = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/scheduled/send-now`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+export const deleteScheduledMessage = (payload) =>
+  apiFetch(`${API_BASE}/api/messages/scheduled/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
 export const fetchLinkPreview = (url) =>
   apiFetch(`${API_BASE}/api/messages/link-preview?url=${encodeURIComponent(url)}`);
 

@@ -19,9 +19,11 @@ function formatScheduledTime(isoString) {
 
 export default function ScheduledMessagesListModal({
   isOpen,
+  open,
   onClose,
   chatId,
 }) {
+  const isModalOpen = Boolean(isOpen ?? open);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionBusyId, setActionBusyId] = useState(null);
@@ -40,10 +42,10 @@ export default function ScheduledMessagesListModal({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isModalOpen) {
       loadMessages();
     }
-  }, [isOpen, chatId]);
+  }, [isModalOpen, chatId]);
 
   const handleSendNow = async (id) => {
     setActionBusyId(id);
@@ -69,7 +71,7 @@ export default function ScheduledMessagesListModal({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isModalOpen) return null;
 
   return (
     <div

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "0.13.2";
+const CACHE_VERSION = "0.21.0";
 const CACHE_NAME = `chakavak-${CACHE_VERSION}`;
 const APP_SHELL = [
   "/manifest.webmanifest",

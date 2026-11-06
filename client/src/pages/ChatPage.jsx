@@ -5,6 +5,8 @@ import { CallScreen } from "../components/call/CallScreen.jsx";
 import { GroupConferenceModal } from "../components/call/GroupConferenceModal.jsx";
 import { ChatSidebar } from "../components/sidebar/index.js";
 import { CreatePollModal } from "../components/modals/CreatePollModal.jsx";
+import ScheduledMessagesListModal from "../components/modals/ScheduledMessagesListModal.jsx";
+import { formatStickerMessage, formatGifMessage } from "../utils/specialMessage.js";
 import AppContextMenu from "../components/context-menu/AppContextMenu.jsx";
 import { useAppContextMenu } from "../components/context-menu/useAppContextMenu.js";
 import { CHAT_PAGE_CONFIG } from "../settings/chatPageConfig.js";
@@ -87,6 +89,8 @@ import {
   moderateVoiceStage,
   publishChatE2eeKey,
   fetchChatE2eeKeys,
+  fetchScheduledMessages,
+  scheduleMessage,
   discoverUsersAndGroups,
   createChannelChat,
   createGroupChat,
@@ -760,6 +764,112 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     debounceMs: NEW_CHAT_SEARCH_DEBOUNCE_MS,
     maxResults: CHAT_PAGE_CONFIG.newChatSearchMaxResults,
   });
+  const [chatFolder, setChatFolder] = useState(() => {
+    try {
+      return localStorage.getItem("chakavak-chat-folder") || "all";
+    } catch {
+      return "all";
+    }
+  });
+
+  const handleSelectChatFolder = useCallback((folder) => {
+    setChatFolder(folder);
+    try {
+      localStorage.setItem("chakavak-chat-folder", folder);
+    } catch {}
+  }, []);
+
+  const folderUnreadCounts = useMemo(() => {
+    const counts = { all: 0, personal: 0, groups: 0, channels: 0 };
+    if (!Array.isArray(chats)) return counts;
+    chats.forEach((chat) => {
+      const unread = Number(chat.unread_count || chat.unreadCount || 0);
+      if (unread <= 0) return;
+      counts.all += unread;
+      const type = chat.type || (chat.is_channel ? "channel" : "dm");
+      if (type === "group") {
+        counts.groups += unread;
+      } else if (type === "channel") {
+        counts.channels += unread;
+      } else {
+        counts.personal += unread;
+      }
+    });
+    return counts;
+  }, [chats]);
+
+  const [showPollModal, setShowPollModal] = useState(false);
+
+  const handleCreatePoll = useCallback(
+    async (pollData) => {
+      if (!activeChatId) return;
+      try {
+        await createPoll({
+          chatId: activeChatId,
+          question: pollData.question,
+          options: pollData.options,
+          isAnonymous: Boolean(pollData.isAnonymous),
+          allowsMultipleAnswers: Boolean(pollData.multipleChoice),
+          isQuiz: Boolean(pollData.isQuiz),
+          correctOptionIndex: pollData.correctOptionIndex,
+        });
+      } catch (err) {
+        console.error("Failed to create poll:", err);
+      }
+    },
+    [activeChatId],
+  );
+
+  const handleToggleStageMic = useCallback(() => {
+    setIsStageMuted((prev) => !prev);
+  }, []);
+
+  const handleToggleStageRaiseHand = useCallback(async () => {
+    if (!connectedStage) return;
+    try {
+      await toggleVoiceStageRaiseHand(connectedStage.chatId);
+      setIsStageRaisedHand((prev) => !prev);
+    } catch (err) {
+      console.error("Failed to toggle raise hand:", err);
+    }
+  }, [connectedStage]);
+
+  const handleLeaveVoiceStage = useCallback(async () => {
+    if (!connectedStage) return;
+    try {
+      await leaveVoiceStage(connectedStage.chatId);
+    } catch {}
+    setConnectedStage(null);
+    setVoiceStageModalOpen(false);
+  }, [connectedStage]);
+
+  const handlePromoteSpeaker = useCallback(async (targetUserId) => {
+    if (!connectedStage) return;
+    try {
+      await moderateVoiceStage({
+        chatId: connectedStage.chatId,
+        targetUserId,
+        action: "make_speaker",
+      });
+    } catch (err) {
+      console.error("Failed to promote speaker:", err);
+    }
+  }, [connectedStage]);
+
+  const handleEndStage = useCallback(async () => {
+    if (!connectedStage) return;
+    try {
+      await moderateVoiceStage({
+        chatId: connectedStage.chatId,
+        action: "end_stage",
+      });
+    } catch (err) {
+      console.error("Failed to end stage:", err);
+    }
+    setConnectedStage(null);
+    setVoiceStageModalOpen(false);
+  }, [connectedStage]);
+
   const [isSecretChatModal, setIsSecretChatModal] = useState(false);
   const [safetyNumberModalOpen, setSafetyNumberModalOpen] = useState(false);
   const [activeSafetyNumber, setActiveSafetyNumber] = useState("");
@@ -7520,6 +7630,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         onScheduleMessage={handleScheduleMessage}
         scheduledCount={scheduledCount}
         onOpenScheduledList={() => setShowScheduledListModal(true)}
+        onOpenPollModal={() => setShowPollModal(true)}
         userScrolledUp={userScrolledUp}
         isAtBottom={isAtBottom}
         unreadInChat={unreadInChat}
@@ -8023,6 +8134,25 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         </Suspense>
       ) : null}
 
+      {showScheduledListModal && (
+        <ScheduledMessagesListModal
+          open={showScheduledListModal}
+          chatId={activeChatId}
+          onClose={() => {
+            setShowScheduledListModal(false);
+            if (activeChatId) {
+              fetchScheduledMessages(activeChatId)
+                .then((res) => res.json())
+                .then((data) => {
+                  if (Array.isArray(data?.scheduledMessages)) {
+                    setScheduledCount(data.scheduledMessages.length);
+                  }
+                })
+                .catch(() => {});
+            }
+          }}
+        />
+      )}
       <CreatePollModal
         open={showPollModal}
         onClose={() => setShowPollModal(false)}
