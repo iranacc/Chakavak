@@ -87,7 +87,7 @@
     font-family: 'Vazirmatn';
     src: url('../src/assets/fonts/vazirmatn/vazirmatn-v16-arabic_latin-regular.woff2')
       format('woff2');
-    font-weight: 400;
+    font-weight: 100 500;
     font-style: normal;
     font-display: swap;
   }
@@ -96,7 +96,7 @@
     font-family: 'Vazirmatn';
     src: url('../src/assets/fonts/vazirmatn/vazirmatn-v16-arabic_latin-700.woff2')
       format('woff2');
-    font-weight: 700;
+    font-weight: 600 900;
     font-style: normal;
     font-display: swap;
   }
@@ -143,8 +143,9 @@
 
 @layer base {
   :lang(fa),
-  [lang="fa"] {
-    font-family: 'Vazirmatn', 'DM Sans', system-ui, sans-serif;
+  [lang="fa"],
+  [dir="rtl"] {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 }
 
