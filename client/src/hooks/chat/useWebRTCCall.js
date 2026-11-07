@@ -380,6 +380,12 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         remoteVideoRef.current.srcObject = activeStream;
         remoteVideoRef.current.play?.().catch(() => {});
       }
+      document.querySelectorAll("video[aria-label*='Remote video']").forEach((v) => {
+        if (v.srcObject !== activeStream) {
+          v.srcObject = activeStream;
+          v.play?.().catch(() => {});
+        }
+      });
       if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== activeStream) {
         remoteAudioRef.current.srcObject = activeStream;
         remoteAudioRef.current.play?.().catch(() => {});
@@ -486,6 +492,14 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         if (localVideoRef.current && hasVideo) {
           localVideoRef.current.srcObject = gotStream;
           localVideoRef.current.play?.().catch(() => {});
+        }
+        if (hasVideo) {
+          document.querySelectorAll("video[aria-label*='Local video']").forEach((v) => {
+            if (v.srcObject !== gotStream) {
+              v.srcObject = gotStream;
+              v.play?.().catch(() => {});
+            }
+          });
         }
 
         const res = await postSignal("start", {
@@ -1311,6 +1325,8 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     localVideoRef,
     remoteVideoRef,
     remoteAudioRef,
+    localStreamRef,
+    remoteStreamRef,
     startCall,
     acceptCall,
     rejectCall,

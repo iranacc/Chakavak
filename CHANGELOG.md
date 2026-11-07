@@ -1,3 +1,11 @@
+## 0.24.6 - 2026-11-07
+
+### Fixed
+- **WebRTC Call Picture-in-Picture (PiP) Swap & Video Stream Persistence**:
+  - Resolved video feed duplication and collision when swapping local and remote camera views in `CallScreen.jsx`: replaced conditional multi-node mounting with a persistent two-node architecture that toggles container coordinates and classes rather than unmounting/re-mounting DOM `<video>` elements.
+  - Exported `localStreamRef` and `remoteStreamRef` from `useWebRTCCall.js` to `ChatPage.jsx` and `<CallScreen />` so video elements directly reference the persistent WebRTC media streams and eliminate ref callback race conditions.
+  - Added stream sync broadcast listeners for video element attachment upon device media acquisition and remote track delivery.
+
 ## 0.24.5 - 2026-11-07
 
 ### Fixed

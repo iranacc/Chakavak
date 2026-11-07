@@ -88,6 +88,8 @@ export const CallScreen = memo(function CallScreen({
   localVideoRef,
   remoteVideoRef,
   remoteAudioRef,
+  localStreamRef: propLocalStreamRef,
+  remoteStreamRef: propRemoteStreamRef,
   onAccept,
   onReject,
   onEnd,
@@ -160,8 +162,10 @@ export const CallScreen = memo(function CallScreen({
   const { isMobileViewport } = useMobileViewport();
   const boxRef = useRef(null);
   const isDraggingRef = useRef(false);
-  const remoteStreamRef = useRef(null);
-  const localStreamRef = useRef(null);
+  const internalRemoteStreamRef = useRef(null);
+  const internalLocalStreamRef = useRef(null);
+  const remoteStreamRef = propRemoteStreamRef || internalRemoteStreamRef;
+  const localStreamRef = propLocalStreamRef || internalLocalStreamRef;
 
   const isVideo = callType === "video";
   const remoteCameraOff =
@@ -257,13 +261,16 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteVideoRef === "function") {
         remoteVideoRef(node);
       } else {
-        if (node && remoteVideoRef.current?.srcObject && !node.srcObject) {
-          node.srcObject = remoteVideoRef.current.srcObject;
-        }
         remoteVideoRef.current = node;
       }
     }
     if (node) {
+      const activeStream =
+        remoteStreamRef?.current ||
+        (typeof remoteVideoRef === "object" && remoteVideoRef?.current?.srcObject);
+      if (activeStream && node.srcObject !== activeStream) {
+        node.srcObject = activeStream;
+      }
       node.muted = true;
       node.play?.().catch(() => {});
       trackVideoAspect(node, setRemoteAspect);
@@ -275,13 +282,16 @@ export const CallScreen = memo(function CallScreen({
       if (typeof remoteAudioRef === "function") {
         remoteAudioRef(node);
       } else {
-        if (node && remoteAudioRef.current?.srcObject && !node.srcObject) {
-          node.srcObject = remoteAudioRef.current.srcObject;
-        }
         remoteAudioRef.current = node;
       }
     }
     if (node) {
+      const activeStream =
+        remoteStreamRef?.current ||
+        (typeof remoteAudioRef === "object" && remoteAudioRef?.current?.srcObject);
+      if (activeStream && node.srcObject !== activeStream) {
+        node.srcObject = activeStream;
+      }
       node.muted = !isSpeakerOn;
       node.play?.().catch(() => {});
     }
@@ -292,18 +302,15 @@ export const CallScreen = memo(function CallScreen({
       if (typeof localVideoRef === "function") {
         localVideoRef(node);
       } else {
-        if (localVideoRef.current?.srcObject) {
-          localStreamRef.current = localVideoRef.current.srcObject;
-        }
-        if (node && localVideoRef.current?.srcObject && !node.srcObject) {
-          node.srcObject = localVideoRef.current.srcObject;
-        }
         localVideoRef.current = node;
       }
     }
     if (node) {
-      if (localStreamRef.current && node.srcObject !== localStreamRef.current) {
-        node.srcObject = localStreamRef.current;
+      const activeStream =
+        localStreamRef?.current ||
+        (typeof localVideoRef === "object" && localVideoRef?.current?.srcObject);
+      if (activeStream && node.srcObject !== activeStream) {
+        node.srcObject = activeStream;
       }
       node.play?.().catch(() => {});
       trackVideoAspect(node, setLocalAspect);
@@ -311,17 +318,36 @@ export const CallScreen = memo(function CallScreen({
   };
 
   useEffect(() => {
-    if (localVideoRef?.current?.srcObject) {
-      localStreamRef.current = localVideoRef.current.srcObject;
-      const localVideos = document.querySelectorAll("video[aria-label^='Local video']");
+    const stream =
+      localStreamRef?.current || localVideoRef?.current?.srcObject;
+    if (stream) {
+      const localVideos = document.querySelectorAll(
+        "video[aria-label^='Local video']",
+      );
       localVideos.forEach((v) => {
-        if (v.srcObject !== localStreamRef.current) {
-          v.srcObject = localStreamRef.current;
+        if (v.srcObject !== stream) {
+          v.srcObject = stream;
           v.play?.().catch(() => {});
         }
       });
     }
-  }, [backgroundEffect, localVideoRef]);
+  }, [backgroundEffect, localStreamRef, localVideoRef, isCameraOff, callState]);
+
+  useEffect(() => {
+    const stream =
+      remoteStreamRef?.current || remoteVideoRef?.current?.srcObject;
+    if (stream) {
+      const remoteVideos = document.querySelectorAll(
+        "video[aria-label^='Remote video']",
+      );
+      remoteVideos.forEach((v) => {
+        if (v.srcObject !== stream) {
+          v.srcObject = stream;
+          v.play?.().catch(() => {});
+        }
+      });
+    }
+  }, [remoteStreamRef, remoteVideoRef, isRemoteCameraOff, callState]);
 
   const handlePointerDown = (e) => {
     if (e.button !== undefined && e.button !== 0) return;
@@ -933,72 +959,112 @@ export const CallScreen = memo(function CallScreen({
             </div>
           </div>
         ) : (
-          /* PiP Mode with Swap Capability */
+          /* PiP Mode with Persistent Video Nodes & Geometry Swap */
           <div className="relative z-10 mx-2 min-h-0 w-[calc(100%-1rem)] flex-1 overflow-hidden rounded-2xl bg-black/40">
-            {/* Main Stage (Full Size) */}
-            <div className="absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center">
+            {/* Remote Video: Main Stage when !isSwapped, Corner PiP when isSwapped */}
+            <div
+              onClick={isSwapped ? () => setIsSwapped(false) : undefined}
+              role={isSwapped ? "button" : undefined}
+              tabIndex={isSwapped ? 0 : undefined}
+              style={isSwapped ? { aspectRatio: `${remoteAspect}` } : undefined}
+              className={
+                !isSwapped
+                  ? "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto"
+                  : `absolute bottom-6 right-6 z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-emerald-400 active:scale-95 flex items-center justify-center pointer-events-auto ${pipSizing}`
+              }
+            >
               <video
+                key="remote-call-video"
                 ref={handleRemoteVideoRef}
                 autoPlay
                 playsInline
                 muted
                 aria-label="Remote video"
                 className={
-                  !isSwapped
-                    ? (remoteOn ? "h-full w-full object-contain transition-all duration-300" : "hidden")
+                  remoteOn
+                    ? (isSwapped
+                        ? "h-full w-full object-cover pointer-events-none"
+                        : "h-full w-full object-contain pointer-events-none")
                     : "hidden"
                 }
               />
+              {!remoteOn && (
+                <div className="flex flex-col items-center justify-center gap-2 p-2 text-center pointer-events-none select-none">
+                  <Avatar
+                    src={callPeer?.avatar || ""}
+                    alt={peerName}
+                    name={peerName}
+                    color={peerColor}
+                    initials={peerInitials}
+                    className={isSwapped ? "h-12 w-12 text-sm shadow-lg" : "h-24 w-24 text-2xl shadow-xl"}
+                  />
+                  <span className={isSwapped ? "text-[10px] text-white/60 line-clamp-1" : "text-xs text-white/60"}>
+                    دوربین خاموش است
+                  </span>
+                </div>
+              )}
+              <div className="absolute bottom-3 left-3 z-10 rounded-lg bg-slate-900/80 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none">
+                {peerName}
+              </div>
+              {isSwapped && (
+                <div
+                  className="absolute inset-0 z-20 flex items-center justify-center bg-black/25 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="جابجایی تصویر / Swap"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-xl border border-white/30">
+                    <ArrowLeftRight size={18} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Local Video: Corner PiP when !isSwapped, Main Stage when isSwapped */}
+            <div
+              onClick={!isSwapped ? () => setIsSwapped(true) : undefined}
+              role={!isSwapped ? "button" : undefined}
+              tabIndex={!isSwapped ? 0 : undefined}
+              style={!isSwapped ? { aspectRatio: `${localAspect}` } : undefined}
+              className={
+                isSwapped
+                  ? "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto"
+                  : `absolute bottom-6 right-6 z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-emerald-400 active:scale-95 flex items-center justify-center pointer-events-auto ${pipSizing}`
+              }
+            >
               <video
+                key="local-call-video"
                 ref={handleLocalVideoRef}
                 autoPlay
                 playsInline
                 muted
                 aria-label="Local video"
                 className={
-                  isSwapped
-                    ? (localOn ? "h-full w-full object-contain transition-all duration-300" : "hidden")
+                  localOn
+                    ? (!isSwapped
+                        ? "h-full w-full object-cover pointer-events-none"
+                        : "h-full w-full object-contain pointer-events-none")
                     : "hidden"
                 }
               />
-            </div>
-
-            {/* Thumbnail / Inset Corner Box */}
-            <div
-              onClick={() => setIsSwapped((prev) => !prev)}
-              role="button"
-              tabIndex={0}
-              className={`absolute bottom-6 right-6 z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-emerald-400 active:scale-95 flex items-center justify-center ${pipSizing}`}
-              style={{ aspectRatio: isSwapped ? `${remoteAspect}` : `${localAspect}` }}
-            >
-              {isSwapped ? (
-                <video
-                  ref={handleRemoteVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  aria-label="Remote video thumbnail"
-                  className={remoteOn ? "h-full w-full object-cover" : "hidden"}
-                />
-              ) : (
-                <video
-                  ref={handleLocalVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  aria-label="Local video thumbnail"
-                  className={localOn ? "h-full w-full object-cover" : "hidden"}
-                />
-              )}
-
-              {/* Click / Swap Hint Button on Thumbnail */}
-              <div
-                className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 hover:opacity-100 transition-opacity"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-xl border border-white/30">
-                  <ArrowLeftRight size={18} />
+              {!localOn && (
+                <div className="flex flex-col items-center justify-center gap-2 p-2 text-center pointer-events-none select-none">
+                  <span className={!isSwapped ? "text-[10px] text-white/60 line-clamp-1" : "text-xs text-white/60"}>
+                    دوربین شما خاموش است
+                  </span>
                 </div>
+              )}
+              <div className="absolute bottom-3 left-3 z-10 rounded-lg bg-slate-900/80 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none">
+                شما • You
               </div>
+              {!isSwapped && (
+                <div
+                  className="absolute inset-0 z-20 flex items-center justify-center bg-black/25 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                  title="جابجایی تصویر / Swap"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-xl border border-white/30">
+                    <ArrowLeftRight size={18} />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Floating Swap Action Button */}
