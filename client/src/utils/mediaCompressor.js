@@ -89,18 +89,42 @@ export const IMAGE_QUALITY_PRESETS = {
 /**
  * Quality presets configuration for video compression.
  */
+export function selectOptimalVideoMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "video/webm";
+  }
+  const formats = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1",
+    "video/mp4",
+    "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=vp8",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp9",
+    "video/webm",
+  ];
+  for (const fmt of formats) {
+    try {
+      if (MediaRecorder.isTypeSupported(fmt)) {
+        return fmt;
+      }
+    } catch (_) {}
+  }
+  return "video/webm";
+}
+
 export const VIDEO_QUALITY_PRESETS = {
   "720p": {
     id: "720p",
-    label: "720p (HD)",
+    label: "720p (HD روان و باکیفیت)",
     maxDimension: 1280,
-    bitrate: 1800000, // 1.8 Mbps
+    bitrate: 3200000, // 3.2 Mbps for smooth playback & lower CPU encoding stress
   },
   "480p": {
     id: "480p",
-    label: "480p (استاندارد)",
+    label: "480p (اقتصادی)",
     maxDimension: 854,
-    bitrate: 900000, // 900 Kbps
+    bitrate: 1800000, // 1.8 Mbps
   },
   original: {
     id: "original",
@@ -398,12 +422,29 @@ export async function compressVideoFile(file, options = {}) {
     };
   }
 
+  let video = null;
+  let audioCtx = null;
+
   try {
-    const video = document.createElement("video");
+    video = document.createElement("video");
     video.autoplay = false;
     video.playsInline = true;
-    video.muted = true;
+    video.muted = muteAudio;
+    video.volume = muteAudio ? 0 : 1;
+    video.preload = "auto";
     video.src = URL.createObjectURL(file);
+
+    // CRITICAL: Attach to DOM so Chromium compositor grants full GPU/hardware decoding
+    // instead of throttling headless elements to 5-10 fps
+    video.style.position = "fixed";
+    video.style.top = "-9999px";
+    video.style.left = "-9999px";
+    video.style.width = "320px";
+    video.style.height = "240px";
+    video.style.opacity = "0.01";
+    video.style.pointerEvents = "none";
+    video.style.zIndex = "-1";
+    document.body.appendChild(video);
 
     await new Promise((resolve, reject) => {
       video.onloadedmetadata = () => resolve();
@@ -423,29 +464,46 @@ export async function compressVideoFile(file, options = {}) {
     canvas.height = targetH;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
+    // Use 30 fps stream capture
     const stream = canvas.captureStream(30);
 
-    // Audio handling: if not muted, try capturing audio from video
-    if (!muteAudio && typeof video.captureStream === "function") {
-      try {
-        const audioStream = video.captureStream();
-        const audioTracks = audioStream.getAudioTracks();
-        if (audioTracks[0]) stream.addTrack(audioTracks[0]);
-      } catch (_) {}
+    // Audio handling: if not muted, capture audio silently via Web Audio API without blasting speakers
+    if (!muteAudio) {
+      const AudioCtx =
+        typeof window !== "undefined" &&
+        (window.AudioContext || window.webkitAudioContext);
+      if (AudioCtx) {
+        try {
+          audioCtx = new AudioCtx();
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume().catch(() => {});
+          }
+          const sourceNode = audioCtx.createMediaElementSource(video);
+          const destNode = audioCtx.createMediaStreamDestination();
+          sourceNode.connect(destNode);
+          const audioTrack = destNode.stream.getAudioTracks()[0] || null;
+          if (audioTrack) {
+            stream.addTrack(audioTrack);
+          }
+        } catch (e) {
+          console.warn("Web Audio capture failed, falling back to captureStream:", e);
+        }
+      }
+      if (!stream.getAudioTracks().length && typeof video.captureStream === "function") {
+        try {
+          const cap = video.captureStream();
+          const trk = cap.getAudioTracks()[0] || null;
+          if (trk) stream.addTrack(trk);
+        } catch (_) {}
+      }
     }
 
-    // Determine supported mimeType
-    let mimeType = "video/webm;codecs=vp8";
-    if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) {
-      mimeType = "video/webm;codecs=vp9";
-    } else if (MediaRecorder.isTypeSupported("video/mp4")) {
-      mimeType = "video/mp4";
-    }
+    const mimeType = selectOptimalVideoMimeType();
 
     const recordedChunks = [];
     const recorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: preset.bitrate || 1500000,
+      videoBitsPerSecond: preset.bitrate || 3200000,
     });
 
     recorder.ondataavailable = (e) => {
@@ -461,30 +519,62 @@ export async function compressVideoFile(file, options = {}) {
 
     recorder.start(100);
 
-    // Draw video frames to canvas synchronously while playing
+    // Draw video frames synchronized to hardware presentation
     video.currentTime = 0;
     await video.play().catch(() => {});
 
     await new Promise((resolve) => {
-      function renderLoop() {
-        if (video.ended || video.paused) {
-          resolve();
-          return;
+      let active = true;
+
+      const finish = () => {
+        if (!active) return;
+        active = false;
+        resolve();
+      };
+
+      video.onended = finish;
+      video.onpause = () => {
+        if (video.currentTime >= duration - 0.25) {
+          finish();
         }
-        ctx.drawImage(video, 0, 0, targetW, targetH);
-        if (options.onProgress && duration > 0) {
-          options.onProgress(Math.min(1.0, video.currentTime / duration));
+      };
+
+      const hasVideoFrameCallback = typeof video.requestVideoFrameCallback === "function";
+
+      if (hasVideoFrameCallback) {
+        function onFrame() {
+          if (!active) return;
+          if (video.ended || video.paused) {
+            finish();
+            return;
+          }
+          ctx.drawImage(video, 0, 0, targetW, targetH);
+          if (options.onProgress && duration > 0) {
+            options.onProgress(Math.min(1.0, video.currentTime / duration));
+          }
+          video.requestVideoFrameCallback(onFrame);
         }
-        requestAnimationFrame(renderLoop);
+        video.requestVideoFrameCallback(onFrame);
+      } else {
+        function onRaf() {
+          if (!active) return;
+          if (video.ended || video.paused) {
+            finish();
+            return;
+          }
+          ctx.drawImage(video, 0, 0, targetW, targetH);
+          if (options.onProgress && duration > 0) {
+            options.onProgress(Math.min(1.0, video.currentTime / duration));
+          }
+          requestAnimationFrame(onRaf);
+        }
+        requestAnimationFrame(onRaf);
       }
-      renderLoop();
     });
 
     if (recorder.state === "recording") {
       recorder.stop();
     }
-    video.pause();
-    URL.revokeObjectURL(video.src);
 
     const transcodedBlob = await completionPromise;
 
@@ -541,5 +631,18 @@ export async function compressVideoFile(file, options = {}) {
       isMuted: false,
       previewUrl: null,
     };
+  } finally {
+    if (audioCtx && typeof audioCtx.close === "function") {
+      audioCtx.close().catch(() => {});
+    }
+    if (video) {
+      try { video.pause(); } catch (_) {}
+      if (video.src) {
+        try { URL.revokeObjectURL(video.src); } catch (_) {}
+      }
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
+    }
   }
 }

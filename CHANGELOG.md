@@ -1,3 +1,13 @@
+## 0.25.2 - 2026-11-07
+
+### Fixed
+- **Optimized Client-Side Video Compression Pipeline & Eliminated Choppy Frame Drops**:
+  - Attached video decoding element to DOM with active GPU rendering properties, eliminating Chromium headless power-saving throttling (which previously reduced decoding framerate to 5-10 fps).
+  - Replaced `requestAnimationFrame` with `video.requestVideoFrameCallback` to synchronize canvas frame drawing directly with GPU hardware decoder frame delivery, ensuring zero dropped or juddered frames.
+  - Implemented silent Web Audio API routing (`createMediaElementSource` to `createMediaStreamDestination`) to capture crisp, unmuted audio into the video recording stream without blasting playback through speakers.
+  - Tuned video bitrates: upgraded 720p preset to 3.2 Mbps for smooth motion encoding and lower CPU compression stress, and 480p to 1.8 Mbps.
+  - Added hardware-accelerated H.264 `video/mp4` preferred codec selection with VP8 fallback via `selectOptimalVideoMimeType()`.
+
 ## 0.25.1 - 2026-11-07
 
 ### Fixed

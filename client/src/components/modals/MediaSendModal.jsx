@@ -123,14 +123,14 @@ export default function MediaSendModal({
         };
       }
       const dur = Number(activeItem.durationSeconds || 10);
-      const bps = preset === "480p" ? 900000 : 1800000;
+      const bps = preset === "480p" ? 1800000 : 3200000;
       const estComp = Math.min(origSize, Math.max(100 * 1024, Math.round((bps * dur) / 8)));
       const savings = calculateSavingsPercent(origSize, estComp);
       return {
         originalFormatted: formatFileSize(origSize),
         compressedFormatted: `~${formatFileSize(estComp)}`,
         savingsPercent: savings,
-        label: preset === "480p" ? "ویدیو ۴۸۰p بهینه" : "ویدیو ۷۲۰p HD",
+        label: preset === "480p" ? "ویدیو ۴۸۰p اقتصادی" : "ویدیو ۷۲۰p HD روان",
       };
     }
 
