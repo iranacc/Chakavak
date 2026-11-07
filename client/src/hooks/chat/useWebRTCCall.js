@@ -928,22 +928,22 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       }
 
       if (rawTrack && rawTrack.readyState !== "ended") {
-        const currentTracks = stream.getVideoTracks();
-        currentTracks.forEach((t) => {
-          if (t !== rawTrack) {
-            stream.removeTrack(t);
-            try { t.stop(); } catch (_) {}
-          }
-        });
-        if (!stream.getVideoTracks().includes(rawTrack)) {
-          stream.addTrack(rawTrack);
-        }
         const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
         if (sender) {
           await sender.replaceTrack(rawTrack);
         }
+        const restoredStream = new MediaStream([rawTrack, ...stream.getAudioTracks()]);
+        localStreamRef.current = restoredStream;
         if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.srcObject = restoredStream;
+          localVideoRef.current.play().catch(() => {});
+        }
+        if (typeof document !== "undefined") {
+          const localVideos = document.querySelectorAll("video[aria-label^='Local video']");
+          localVideos.forEach((v) => {
+            v.srcObject = restoredStream;
+            v.play?.().catch(() => {});
+          });
         }
       }
       setBackgroundEffect("none");
@@ -1015,8 +1015,20 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       if (sender) {
         await sender.replaceTrack(processedTrack);
       }
+
+      // Re-create stream wrapper so all HTML5 video elements bind to the new processed track immediately!
+      const newLocalStream = new MediaStream([processedTrack, ...stream.getAudioTracks()]);
+      localStreamRef.current = newLocalStream;
       if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.srcObject = newLocalStream;
+        localVideoRef.current.play?.().catch(() => {});
+      }
+      if (typeof document !== "undefined") {
+        const localVideos = document.querySelectorAll("video[aria-label^='Local video']");
+        localVideos.forEach((v) => {
+          v.srcObject = newLocalStream;
+          v.play?.().catch(() => {});
+        });
       }
       setBackgroundEffect(effect);
     } catch (err) {

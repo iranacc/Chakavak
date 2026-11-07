@@ -308,6 +308,19 @@ export const CallScreen = memo(function CallScreen({
     }
   };
 
+  useEffect(() => {
+    if (localVideoRef?.current?.srcObject) {
+      localStreamRef.current = localVideoRef.current.srcObject;
+      const localVideos = document.querySelectorAll("video[aria-label^='Local video']");
+      localVideos.forEach((v) => {
+        if (v.srcObject !== localStreamRef.current) {
+          v.srcObject = localStreamRef.current;
+          v.play?.().catch(() => {});
+        }
+      });
+    }
+  }, [backgroundEffect, localVideoRef]);
+
   const handlePointerDown = (e) => {
     if (e.button !== undefined && e.button !== 0) return;
     const box = boxRef.current;

@@ -1,3 +1,11 @@
+## 0.24.3 - 2026-11-07
+
+### Fixed
+- **Video Background Processing & AI Blur in Calls**:
+  - Corrected the Canvas 2D compositing pipeline in `videoBackground.js` to draw the MediaPipe `segmentationMask` first as a clipping stencil, composite the person using `source-in`, and paint the blurred camera video behind the subject using `destination-over` (fixing the issue where background blur appeared inactive due to inverted compositing).
+  - Ensured HTML5 `<video>` elements in `useWebRTCCall.js` and `CallScreen.jsx` re-bind and re-render the processed video track immediately by generating a fresh `MediaStream` instance when toggling virtual backgrounds.
+  - Added auto-resume check in `processFrame` to guarantee video playback continues even if background tabs or streams temporarily pause.
+
 ## 0.24.2 - 2026-11-07
 
 ### Fixed

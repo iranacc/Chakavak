@@ -93,14 +93,14 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
     }
 
     try {
-      // 1. Draw raw crisp video frame
-      ctx.drawImage(results.image, 0, 0, width, height);
-
-      // 2. Keep ONLY the person using the segmentation mask
-      ctx.globalCompositeOperation = "destination-in";
+      // 1. Draw the segmentation mask first as the clipping stencil
       ctx.drawImage(results.segmentationMask, 0, 0, width, height);
 
-      // 3. Draw blurred background BEHIND the person
+      // 2. Keep ONLY the person pixels inside the mask using source-in
+      ctx.globalCompositeOperation = "source-in";
+      ctx.drawImage(results.image, 0, 0, width, height);
+
+      // 3. Draw blurred background BEHIND the person using destination-over
       ctx.globalCompositeOperation = "destination-over";
       if (currentEffect === "deep-blur") {
         ctx.filter = "blur(24px)";
@@ -116,7 +116,8 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
       if (currentEffect !== "image" || !bgImage) {
         ctx.drawImage(results.image, 0, 0, width, height);
       }
-    } catch (_) {
+    } catch (err) {
+      console.warn("onResults composition error:", err);
       // Fallback in case of rendering error
       ctx.filter = "none";
       ctx.globalCompositeOperation = "source-over";
@@ -128,6 +129,10 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
 
   async function processFrame() {
     if (!isRunning) return;
+
+    if (sourceVideo.paused && sourceVideo.srcObject) {
+      sourceVideo.play().catch(() => {});
+    }
 
     if (sourceVideo.readyState >= 2) {
       if (sourceVideo.videoWidth > 0 && sourceVideo.videoHeight > 0) {
@@ -141,7 +146,8 @@ export function createVirtualBackgroundPipeline(sourceVideo, initialEffect = "bl
         isProcessing = true;
         try {
           await segmenter.send({ image: sourceVideo });
-        } catch (_) {
+        } catch (err) {
+          console.warn("segmenter.send error:", err);
           if (ctx) {
             ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
           }
