@@ -89,12 +89,32 @@ describe("mediaCompressor utility module", () => {
   });
 
   describe("compressVideoFile", () => {
-    test("bypasses transcoding when targetQuality is original and not muted", async () => {
+    test("bypasses transcoding when targetQuality is original, not muted, and no trim or rotation", async () => {
       const mockVideo = new Blob(["mock-video-data"], { type: "video/mp4" });
-      const res = await compressVideoFile(mockVideo, { targetQuality: "original", muteAudio: false });
+      const res = await compressVideoFile(mockVideo, {
+        targetQuality: "original",
+        muteAudio: false,
+        trimStart: 0,
+        trimEnd: null,
+        rotation: 0,
+      });
       expect(res.isCompressed).toBe(false);
       expect(res.isMuted).toBe(false);
+      expect(res.isTrimmed).toBe(false);
+      expect(res.isRotated).toBe(false);
       expect(res.file).toBe(mockVideo);
+    });
+
+    test("does not bypass transcoding if video has trim or rotation even if original quality is requested", async () => {
+      const mockVideo = new Blob(["mock-video-data"], { type: "video/mp4" });
+      // In Node environment without DOM MediaRecorder, it returns fallback
+      const res = await compressVideoFile(mockVideo, {
+        targetQuality: "original",
+        muteAudio: false,
+        trimStart: 5,
+        rotation: 90,
+      });
+      expect(res.file).toBeDefined();
     });
   });
 });

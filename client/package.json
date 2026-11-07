@@ -62,5 +62,5 @@
   "overrides": {
     "minimatch": "10.2.5"
   },
-  "version": "0.25.3"
+  "version": "0.26.0"
 }

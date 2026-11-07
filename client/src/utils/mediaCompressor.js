@@ -386,10 +386,18 @@ export async function compressImageFile(file, options = {}) {
 export async function compressVideoFile(file, options = {}) {
   const originalSize = Number(file?.size || 0);
   const targetQuality = options.targetQuality || "720p";
-  const muteAudio = Boolean(options.muteAudio);
+  const muteAudio = Boolean(options.muteAudio) || Boolean(options.isGif);
+  const trimStart = Math.max(0, Number(options.trimStart) || 0);
+  const userTrimEnd = Number(options.trimEnd);
+  const rotation = (((Math.round((Number(options.rotation) || 0) / 90) * 90) % 360) + 360) % 360; // 0, 90, 180, 270
 
-  // If original quality requested and not muted: bypass transcoding
-  if (targetQuality === "original" && !muteAudio) {
+  const hasTrimmingOrRotation =
+    trimStart > 0.05 ||
+    (Number.isFinite(userTrimEnd) && userTrimEnd > 0) ||
+    rotation !== 0;
+
+  // If original quality requested, not muted, and no trim or rotation: bypass transcoding
+  if (targetQuality === "original" && !muteAudio && !hasTrimmingOrRotation) {
     let previewUrl = null;
     if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function" && file instanceof Blob) {
       try { previewUrl = URL.createObjectURL(file); } catch (_) {}
@@ -401,6 +409,8 @@ export async function compressVideoFile(file, options = {}) {
       savingsPercent: 0,
       isCompressed: false,
       isMuted: false,
+      isTrimmed: false,
+      isRotated: false,
       previewUrl,
     };
   }
@@ -418,6 +428,8 @@ export async function compressVideoFile(file, options = {}) {
       savingsPercent: 0,
       isCompressed: false,
       isMuted: false,
+      isTrimmed: false,
+      isRotated: false,
       previewUrl: null,
     };
   }
@@ -482,28 +494,74 @@ export async function compressVideoFile(file, options = {}) {
     const vH = video.videoHeight || 480;
     const duration = video.duration || 0;
 
+    const actualTrimEnd =
+      Number.isFinite(userTrimEnd) && userTrimEnd > trimStart && userTrimEnd <= duration
+        ? userTrimEnd
+        : duration;
+    const effectiveDuration = Math.max(0.1, actualTrimEnd - trimStart);
+
     const preset = VIDEO_QUALITY_PRESETS[targetQuality] || VIDEO_QUALITY_PRESETS["720p"];
     const maxDim = preset.maxDimension || Math.max(vW, vH);
     const { width: targetW, height: targetH } = calculateDownscaleDimensions(vW, vH, maxDim);
 
+    // If video is rotated 90 or 270 degrees, swap canvas dimensions
+    const isRotated90or270 = rotation === 90 || rotation === 270;
+    const canvasW = isRotated90or270 ? targetH : targetW;
+    const canvasH = isRotated90or270 ? targetW : targetH;
+
     const canvas = document.createElement("canvas");
-    canvas.width = targetW;
-    canvas.height = targetH;
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     // CRITICAL: Hardware-accelerated Canvas 2D (DO NOT use willReadFrequently which forces software CPU fallback)
     const ctx =
       canvas.getContext("2d", { alpha: false, desynchronized: true }) ||
       canvas.getContext("2d");
 
-    // Pre-paint initial video frame onto canvas before recording starts
-    if (ctx) {
-      ctx.drawImage(video, 0, 0, targetW, targetH);
+    // Helper to draw rotated / trimmed video frame directly onto hardware canvas
+    function drawVideoFrame() {
+      if (!ctx) return;
+      if (rotation === 0) {
+        ctx.drawImage(video, 0, 0, canvasW, canvasH);
+      } else {
+        ctx.save();
+        ctx.translate(canvasW / 2, canvasH / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.drawImage(video, -targetW / 2, -targetH / 2, targetW, targetH);
+        ctx.restore();
+      }
     }
+
+    // Seek to trimStart if trimmed
+    if (trimStart > 0.05) {
+      await new Promise((resolveSeek) => {
+        let seekDone = false;
+        const seekTimer = setTimeout(() => {
+          if (!seekDone) {
+            seekDone = true;
+            resolveSeek();
+          }
+        }, 3000);
+        video.onseeked = () => {
+          if (!seekDone) {
+            seekDone = true;
+            clearTimeout(seekTimer);
+            resolveSeek();
+          }
+        };
+        video.currentTime = trimStart;
+      });
+    } else {
+      video.currentTime = 0;
+    }
+
+    // Pre-paint initial video frame onto canvas before recording starts
+    drawVideoFrame();
 
     // Capture 30 fps stream from hardware canvas
     const stream = canvas.captureStream(30);
     const videoTrack = stream.getVideoTracks()[0] || null;
 
-    // Audio handling: if not muted, route audio into stream silently via Web Audio API
+    // Audio handling: if not muted and not GIF, route audio into stream silently via Web Audio API
     if (!muteAudio) {
       const AudioCtx =
         typeof window !== "undefined" &&
@@ -554,7 +612,6 @@ export async function compressVideoFile(file, options = {}) {
     });
 
     // Start video playback FIRST to ensure presentation clock and hardware decoder are active
-    video.currentTime = 0;
     video.muted = muteAudio;
     video.volume = muteAudio ? 0 : 1;
 
@@ -582,13 +639,13 @@ export async function compressVideoFile(file, options = {}) {
       video.onended = finish;
       video.onerror = finish;
       video.onpause = () => {
-        if (video.currentTime >= duration - 0.25) {
+        if (video.currentTime >= actualTrimEnd - 0.25) {
           finish();
         }
       };
 
       // Safety timeout in case browser never fires onended
-      const maxSafetyMs = Math.max(10000, Math.ceil((duration + 4) * 1000));
+      const maxSafetyMs = Math.max(10000, Math.ceil((effectiveDuration + 4) * 1000));
       const safetyTimer = setTimeout(() => {
         if (active) {
           console.warn("Video compression safety timeout reached, concluding stream");
@@ -601,19 +658,18 @@ export async function compressVideoFile(file, options = {}) {
       if (hasVideoFrameCallback) {
         function onFrame() {
           if (!active) return;
-          if (video.ended || (video.paused && video.currentTime >= duration - 0.25)) {
+          if (video.ended || video.currentTime >= actualTrimEnd - 0.05 || (video.paused && video.currentTime >= actualTrimEnd - 0.25)) {
             clearTimeout(safetyTimer);
             finish();
             return;
           }
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, targetW, targetH);
-          }
+          drawVideoFrame();
           if (videoTrack && typeof videoTrack.requestFrame === "function") {
             try { videoTrack.requestFrame(); } catch (_) {}
           }
-          if (options.onProgress && duration > 0) {
-            options.onProgress(Math.min(1.0, video.currentTime / duration));
+          if (options.onProgress && effectiveDuration > 0) {
+            const currentTrimmedSec = Math.max(0, video.currentTime - trimStart);
+            options.onProgress(Math.min(1.0, currentTrimmedSec / effectiveDuration));
           }
           video.requestVideoFrameCallback(onFrame);
         }
@@ -621,19 +677,18 @@ export async function compressVideoFile(file, options = {}) {
       } else {
         function onRaf() {
           if (!active) return;
-          if (video.ended || (video.paused && video.currentTime >= duration - 0.25)) {
+          if (video.ended || video.currentTime >= actualTrimEnd - 0.05 || (video.paused && video.currentTime >= actualTrimEnd - 0.25)) {
             clearTimeout(safetyTimer);
             finish();
             return;
           }
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, targetW, targetH);
-          }
+          drawVideoFrame();
           if (videoTrack && typeof videoTrack.requestFrame === "function") {
             try { videoTrack.requestFrame(); } catch (_) {}
           }
-          if (options.onProgress && duration > 0) {
-            options.onProgress(Math.min(1.0, video.currentTime / duration));
+          if (options.onProgress && effectiveDuration > 0) {
+            const currentTrimmedSec = Math.max(0, video.currentTime - trimStart);
+            options.onProgress(Math.min(1.0, currentTrimmedSec / effectiveDuration));
           }
           requestAnimationFrame(onRaf);
         }
@@ -652,12 +707,14 @@ export async function compressVideoFile(file, options = {}) {
         file,
         width: vW,
         height: vH,
-        duration,
+        duration: effectiveDuration,
         originalSizeBytes: originalSize,
         compressedSizeBytes: originalSize,
         savingsPercent: 0,
         isCompressed: false,
         isMuted: false,
+        isTrimmed: false,
+        isRotated: false,
         previewUrl: null,
       };
     }
@@ -679,14 +736,16 @@ export async function compressVideoFile(file, options = {}) {
 
     return {
       file: compressedFile,
-      width: targetW,
-      height: targetH,
-      duration,
+      width: canvasW,
+      height: canvasH,
+      duration: effectiveDuration,
       originalSizeBytes: originalSize,
       compressedSizeBytes: transcodedBlob.size,
       savingsPercent: savings,
       isCompressed: true,
       isMuted: muteAudio,
+      isTrimmed: trimStart > 0.05 || actualTrimEnd < duration - 0.05,
+      isRotated: rotation !== 0,
       previewUrl,
     };
   } catch (err) {

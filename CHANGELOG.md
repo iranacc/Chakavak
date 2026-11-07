@@ -1,3 +1,21 @@
+## 0.26.0 - 2026-11-07
+
+### Added
+- **Telegram-Grade In-Flight Video Editing Suite (ویرایش پیشرفته ویدیو در زمان ارسال)**:
+  - **Video Trimming with Dual-Handle Timeline Scrubber**:
+    - Added an interactive dual-handle scrubber timeline under video preview in `MediaSendModal.jsx`.
+    - Real-time frame seeking during handle dragging allows users to accurately pin `trimStart` and `trimEnd`.
+    - Live time badges (`00:03 ➔ 00:18 • زمان برگزیده: ۱۵ ثانیه`) and active range loop preview.
+    - Zero-cost hardware encoding pipeline in `client/src/utils/mediaCompressor.js`: seeks directly to `trimStart`, encodes hardware presentation frames, and finalizes cleanly at `trimEnd`.
+  - **90° Video Rotation Tool (چرخش ویدیو)**:
+    - Added quick rotation button cycling through 0°, 90°, 180°, and 270°.
+    - Live CSS transform preview on the video element and hardware Canvas `translate/rotate` rendering pipeline that swaps canvas dimensions and outputs upright video.
+  - **Send as GIF Mode (تبدیل به گیف متحرک)**:
+    - Added one-click GIF mode toggle for looping silent video notes.
+- **Intelligent Pre-Compression Media Size Validation**:
+  - Raw media files (photos/videos) are now permitted up to 500 MB at selection time so users can compress, trim, and optimize large mobile recordings that would otherwise exceed default server limits.
+  - Strict server upload limits (`fileUploadMaxSizeMb` and `fileUploadMaxTotalSizeMb`) are now evaluated post-optimization upon confirmation in `ChatPage.jsx`, displaying friendly guidance if a file still exceeds limits.
+
 ## 0.25.3 - 2026-11-07
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Close,
   Zap,
@@ -6,11 +6,14 @@ import {
   Volume2,
   VolumeX,
   Play,
+  Pause,
   Send,
   LoaderCircle,
   ImageIcon,
   Video,
-  Check,
+  Rotate,
+  Scissors,
+  Repeat,
 } from "../../icons/lucide.js";
 import {
   compressImageFile,
@@ -20,6 +23,13 @@ import {
   IMAGE_QUALITY_PRESETS,
   VIDEO_QUALITY_PRESETS,
 } from "../../utils/mediaCompressor.js";
+
+function formatVideoTime(secs) {
+  const s = Math.max(0, Math.floor(Number(secs) || 0));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`;
+}
 
 export default function MediaSendModal({
   isOpen,
@@ -32,9 +42,14 @@ export default function MediaSendModal({
   const [caption, setCaption] = useState(initialCaption || "");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
-  // Per-item settings map: { [itemId]: { imagePreset: "balanced", videoPreset: "720p", muteAudio: false } }
+  // Per-item settings map:
+  // { [itemId]: { imagePreset, videoPreset, muteAudio, trimStart, trimEnd, rotation, isGif } }
   const [itemSettings, setItemSettings] = useState({});
+
+  const previewVideoRef = useRef(null);
+  const timelineTrackRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,14 +57,19 @@ export default function MediaSendModal({
       setCaption(initialCaption || "");
       setIsProcessing(false);
       setProcessingProgress(0);
+      setIsPlayingPreview(false);
 
-      // Initialize default settings for items
       const initial = {};
       items.forEach((item) => {
+        const dur = Number(item.durationSeconds || 0);
         initial[item.id] = {
           imagePreset: "balanced",
           videoPreset: "720p",
           muteAudio: false,
+          trimStart: 0,
+          trimEnd: dur > 0 ? dur : null,
+          rotation: 0,
+          isGif: false,
         };
       });
       setItemSettings(initial);
@@ -60,17 +80,27 @@ export default function MediaSendModal({
   const isImage = Boolean(activeItem?.mimeType?.startsWith("image/"));
   const isVideo = Boolean(activeItem?.mimeType?.startsWith("video/"));
 
-  const currentSettings = activeItem ? (itemSettings[activeItem.id] || {
-    imagePreset: "balanced",
-    videoPreset: "720p",
-    muteAudio: false,
-  }) : {
-    imagePreset: "balanced",
-    videoPreset: "720p",
-    muteAudio: false,
-  };
+  const currentSettings = activeItem
+    ? itemSettings[activeItem.id] || {
+        imagePreset: "balanced",
+        videoPreset: "720p",
+        muteAudio: false,
+        trimStart: 0,
+        trimEnd: null,
+        rotation: 0,
+        isGif: false,
+      }
+    : {
+        imagePreset: "balanced",
+        videoPreset: "720p",
+        muteAudio: false,
+        trimStart: 0,
+        trimEnd: null,
+        rotation: 0,
+        isGif: false,
+      };
 
-  const updateActiveSetting = (key, val) => {
+  const updateActiveSetting = useCallback((key, val) => {
     if (!activeItem) return;
     setItemSettings((prev) => ({
       ...prev,
@@ -79,10 +109,124 @@ export default function MediaSendModal({
           imagePreset: "balanced",
           videoPreset: "720p",
           muteAudio: false,
+          trimStart: 0,
+          trimEnd: null,
+          rotation: 0,
+          isGif: false,
         }),
         [key]: val,
       },
     }));
+  }, [activeItem]);
+
+  const activeItemDuration = Number(
+    activeItem?.durationSeconds || previewVideoRef.current?.duration || 10,
+  );
+  const curTrimStart = Math.max(0, currentSettings.trimStart || 0);
+  const curTrimEnd =
+    currentSettings.trimEnd && currentSettings.trimEnd > curTrimStart
+      ? currentSettings.trimEnd
+      : activeItemDuration;
+  const effectiveDuration = Math.max(0.5, curTrimEnd - curTrimStart);
+
+  // Synchronize duration once metadata loads
+  const handlePreviewVideoLoaded = (e) => {
+    const v = e.target;
+    if (v && Number.isFinite(v.duration) && v.duration > 0) {
+      if (!currentSettings.trimEnd || currentSettings.trimEnd > v.duration) {
+        updateActiveSetting("trimEnd", v.duration);
+      }
+    }
+  };
+
+  // Keep video playback bounded within the trimmed region
+  const handlePreviewVideoTimeUpdate = (e) => {
+    const v = e.target;
+    if (!v) return;
+    const start = currentSettings.trimStart || 0;
+    const end = currentSettings.trimEnd || v.duration || activeItemDuration;
+
+    if (end > start && v.currentTime >= end) {
+      v.currentTime = start;
+      if (!v.paused) {
+        v.play().catch(() => {});
+      }
+    }
+  };
+
+  const togglePreviewPlayback = () => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      if (v.currentTime < curTrimStart || v.currentTime >= curTrimEnd) {
+        v.currentTime = curTrimStart;
+      }
+      v.play()
+        .then(() => setIsPlayingPreview(true))
+        .catch(() => {});
+    } else {
+      v.pause();
+      setIsPlayingPreview(false);
+    }
+  };
+
+  // Interactive timeline scrubber dragging logic
+  const handleHandlePointerDown = (type, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const track = timelineTrackRef.current;
+    if (!track) return;
+
+    const dur = activeItemDuration || 10;
+    const rect = track.getBoundingClientRect();
+
+    const onPointerMove = (moveEvent) => {
+      const clientX = moveEvent.clientX;
+      const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const targetTime = Math.round(fraction * dur * 10) / 10;
+
+      if (type === "start") {
+        const curEnd = currentSettings.trimEnd ?? dur;
+        const safeStart = Math.max(0, Math.min(curEnd - 0.5, targetTime));
+        updateActiveSetting("trimStart", safeStart);
+        if (previewVideoRef.current) {
+          previewVideoRef.current.currentTime = safeStart;
+        }
+      } else {
+        const curStart = currentSettings.trimStart ?? 0;
+        const safeEnd = Math.max(curStart + 0.5, Math.min(dur, targetTime));
+        updateActiveSetting("trimEnd", safeEnd);
+        if (previewVideoRef.current) {
+          previewVideoRef.current.currentTime = safeEnd;
+        }
+      }
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const handleTrackClick = (e) => {
+    const track = timelineTrackRef.current;
+    if (!track) return;
+    const dur = activeItemDuration || 10;
+    const rect = track.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const clickTime = fraction * dur;
+
+    // Seek preview video to clicked position
+    if (previewVideoRef.current) {
+      previewVideoRef.current.currentTime = Math.max(
+        curTrimStart,
+        Math.min(curTrimEnd, clickTime),
+      );
+    }
   };
 
   // Estimated size calculation for display
@@ -100,8 +244,7 @@ export default function MediaSendModal({
           label: "کیفیت اصلی (بدون فشرده‌سازی)",
         };
       }
-      // Empirical estimates: balanced ~ 85-92% reduction on camera photos; eco ~ 93-97%
-      const ratio = preset === "eco" ? 0.05 : 0.10;
+      const ratio = preset === "eco" ? 0.05 : 0.1;
       const estComp = Math.min(origSize, Math.max(40 * 1024, Math.round(origSize * ratio)));
       const savings = calculateSavingsPercent(origSize, estComp);
       return {
@@ -114,23 +257,37 @@ export default function MediaSendModal({
 
     if (isVideo) {
       const preset = currentSettings.videoPreset || "720p";
-      if (preset === "original" && !currentSettings.muteAudio) {
+      const totalDur = Number(activeItem.durationSeconds || 10);
+      const trimStart = currentSettings.trimStart || 0;
+      const trimEnd = currentSettings.trimEnd || totalDur;
+      const effectiveDur = Math.max(0.5, trimEnd - trimStart);
+
+      const hasEdits =
+        trimStart > 0.05 ||
+        trimEnd < totalDur - 0.05 ||
+        (currentSettings.rotation && currentSettings.rotation > 0) ||
+        currentSettings.isGif;
+
+      if (preset === "original" && !currentSettings.muteAudio && !hasEdits) {
         return {
           originalFormatted: formatFileSize(origSize),
           compressedFormatted: formatFileSize(origSize),
           savingsPercent: 0,
-          label: "کیفیت اصلی (بدون تبدیل)",
+          label: "کیفیت اصلی (بدون تغییر)",
         };
       }
-      const dur = Number(activeItem.durationSeconds || 10);
+
       const bps = preset === "480p" ? 1800000 : 3200000;
-      const estComp = Math.min(origSize, Math.max(100 * 1024, Math.round((bps * dur) / 8)));
+      const estComp = Math.min(
+        origSize,
+        Math.max(100 * 1024, Math.round((bps * effectiveDur) / 8)),
+      );
       const savings = calculateSavingsPercent(origSize, estComp);
       return {
         originalFormatted: formatFileSize(origSize),
         compressedFormatted: `~${formatFileSize(estComp)}`,
         savingsPercent: savings,
-        label: preset === "480p" ? "ویدیو ۴۸۰p اقتصادی" : "ویدیو ۷۲۰p HD روان",
+        label: `${preset === "480p" ? "۴۸۰p بهینه" : "۷۲۰p HD"} • ${formatVideoTime(effectiveDur)}`,
       };
     }
 
@@ -158,6 +315,10 @@ export default function MediaSendModal({
         imagePreset: "balanced",
         videoPreset: "720p",
         muteAudio: false,
+        trimStart: 0,
+        trimEnd: null,
+        rotation: 0,
+        isGif: false,
       };
 
       const isImg = item.mimeType?.startsWith("image/");
@@ -185,27 +346,41 @@ export default function MediaSendModal({
         } catch (err) {
           console.warn("Image compression error, using original:", err);
         }
-      } else if (isVid && (settings.videoPreset !== "original" || settings.muteAudio)) {
-        try {
-          const compResult = await compressVideoFile(item.file, {
-            targetQuality: settings.videoPreset,
-            muteAudio: settings.muteAudio,
-            onProgress: (p) => {
-              const base = (i / total) * 100;
-              const share = (1 / total) * 100;
-              setProcessingProgress(Math.min(99, Math.round(base + p * share)));
-            },
-          });
-          if (compResult && compResult.file) {
-            processedFile = compResult.file;
-            width = compResult.width || width;
-            height = compResult.height || height;
-            durationSeconds = compResult.duration ?? durationSeconds;
-            sizeBytes = compResult.compressedSizeBytes || processedFile.size;
-            if (compResult.previewUrl) previewUrl = compResult.previewUrl;
+      } else if (isVid) {
+        const hasEdits =
+          (settings.trimStart && settings.trimStart > 0.05) ||
+          (settings.trimEnd && settings.trimEnd < (item.durationSeconds || 10) - 0.05) ||
+          settings.rotation !== 0 ||
+          settings.isGif ||
+          settings.muteAudio ||
+          settings.videoPreset !== "original";
+
+        if (hasEdits) {
+          try {
+            const compResult = await compressVideoFile(item.file, {
+              targetQuality: settings.videoPreset,
+              muteAudio: settings.muteAudio || settings.isGif,
+              trimStart: settings.trimStart || 0,
+              trimEnd: settings.trimEnd || null,
+              rotation: settings.rotation || 0,
+              isGif: settings.isGif,
+              onProgress: (p) => {
+                const base = (i / total) * 100;
+                const share = (1 / total) * 100;
+                setProcessingProgress(Math.min(99, Math.round(base + p * share)));
+              },
+            });
+            if (compResult && compResult.file) {
+              processedFile = compResult.file;
+              width = compResult.width || width;
+              height = compResult.height || height;
+              durationSeconds = compResult.duration ?? durationSeconds;
+              sizeBytes = compResult.compressedSizeBytes || processedFile.size;
+              if (compResult.previewUrl) previewUrl = compResult.previewUrl;
+            }
+          } catch (err) {
+            console.warn("Video compression error, using original:", err);
           }
-        } catch (err) {
-          console.warn("Video compression error, using original:", err);
         }
       }
 
@@ -230,6 +405,9 @@ export default function MediaSendModal({
     onClose?.();
   };
 
+  const startPct = Math.max(0, Math.min(100, (curTrimStart / activeItemDuration) * 100));
+  const endPct = Math.max(startPct, Math.min(100, (curTrimEnd / activeItemDuration) * 100));
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
@@ -245,7 +423,7 @@ export default function MediaSendModal({
               {isImage ? <ImageIcon size={18} /> : <Video size={18} />}
             </span>
             <div>
-              <h2 className="text-sm font-bold text-white">ارسال و بهینه‌سازی مدیا</h2>
+              <h2 className="text-sm font-bold text-white">ویرایش و بهینه‌سازی مدیا</h2>
               <p className="text-[11px] text-white/60">
                 {items.length > 1 ? `فایل ${activeIndex + 1} از ${items.length}` : activeItem?.name}
               </p>
@@ -263,7 +441,7 @@ export default function MediaSendModal({
         </div>
 
         {/* Media Preview Container */}
-        <div className="relative flex-1 min-h-[220px] max-h-[380px] bg-slate-950/70 flex items-center justify-center p-2 overflow-hidden select-none">
+        <div className="relative flex-1 min-h-[200px] max-h-[340px] bg-slate-950/70 flex items-center justify-center p-2 overflow-hidden select-none">
           {isImage ? (
             <img
               src={activeItem?.previewUrl}
@@ -273,12 +451,31 @@ export default function MediaSendModal({
           ) : isVideo ? (
             <div className="relative max-h-full max-w-full flex items-center justify-center">
               <video
+                ref={previewVideoRef}
                 src={activeItem?.previewUrl}
-                controls
                 playsInline
-                muted={currentSettings.muteAudio}
-                className="max-h-[340px] max-w-full rounded-2xl object-contain shadow-lg"
+                muted={currentSettings.muteAudio || currentSettings.isGif}
+                onLoadedMetadata={handlePreviewVideoLoaded}
+                onTimeUpdate={handlePreviewVideoTimeUpdate}
+                onClick={togglePreviewPlayback}
+                style={{
+                  transform: `rotate(${currentSettings.rotation || 0}deg)`,
+                  transition: "transform 0.2s ease-out",
+                }}
+                className="max-h-[300px] max-w-full rounded-2xl object-contain shadow-lg cursor-pointer"
               />
+
+              {/* Play / Pause Overlay Button */}
+              {!isPlayingPreview ? (
+                <button
+                  type="button"
+                  onClick={togglePreviewPlayback}
+                  className="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-900/80 text-white border border-white/20 shadow-2xl backdrop-blur-md hover:scale-110 active:scale-95 transition"
+                  aria-label="Play Preview"
+                >
+                  <Play size={24} className="translate-x-0.5 text-emerald-400 fill-emerald-400" />
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center gap-2 text-white/60">
@@ -317,6 +514,66 @@ export default function MediaSendModal({
             </div>
           ) : null}
         </div>
+
+        {/* Video Trimming Timeline Bar (Telegram Style) */}
+        {isVideo && !isProcessing ? (
+          <div className="px-5 py-2.5 bg-slate-950/60 border-t border-white/5 space-y-1.5 select-none">
+            <div className="flex items-center justify-between text-[11px] text-white/80">
+              <span className="flex items-center gap-1 font-mono dir-ltr">
+                <Scissors size={12} className="text-emerald-400" />
+                <span className="font-semibold text-emerald-300">{formatVideoTime(curTrimStart)}</span>
+                <span className="text-white/40">➔</span>
+                <span className="font-semibold text-emerald-300">{formatVideoTime(curTrimEnd)}</span>
+              </span>
+              <span className="text-emerald-400 font-medium">
+                زمان برگزیده: {formatVideoTime(effectiveDuration)}
+              </span>
+            </div>
+
+            {/* Interactive Dual-Handle Timeline Scrubber */}
+            <div
+              ref={timelineTrackRef}
+              className="relative w-full h-8 rounded-xl bg-slate-900 border border-white/15 overflow-hidden flex items-center cursor-pointer dir-ltr"
+              onClick={handleTrackClick}
+            >
+              {/* Visual background ticks / filmstrip effect */}
+              <div className="absolute inset-0 opacity-25 flex justify-between px-2 items-center pointer-events-none">
+                {Array.from({ length: 16 }).map((_, idx) => (
+                  <div key={idx} className="w-0.5 h-3 bg-white/40 rounded-full" />
+                ))}
+              </div>
+
+              {/* Selected highlighted segment */}
+              <div
+                className="absolute top-0 bottom-0 bg-emerald-500/30 border-y-2 border-emerald-400 pointer-events-none"
+                style={{
+                  left: `${startPct}%`,
+                  width: `${Math.max(2, endPct - startPct)}%`,
+                }}
+              />
+
+              {/* Left handle (trimStart) */}
+              <div
+                className="absolute top-0 bottom-0 w-4 bg-emerald-400 hover:bg-emerald-300 rounded-l-lg cursor-ew-resize flex items-center justify-center shadow-lg select-none touch-none z-20 -translate-x-1/2 transition-colors active:scale-105 active:bg-emerald-200"
+                style={{ left: `${startPct}%` }}
+                onPointerDown={(e) => handleHandlePointerDown("start", e)}
+                title="نقطه شروع ویدیو"
+              >
+                <div className="w-0.5 h-3.5 bg-slate-950 rounded-full" />
+              </div>
+
+              {/* Right handle (trimEnd) */}
+              <div
+                className="absolute top-0 bottom-0 w-4 bg-emerald-400 hover:bg-emerald-300 rounded-r-lg cursor-ew-resize flex items-center justify-center shadow-lg select-none touch-none z-20 -translate-x-1/2 transition-colors active:scale-105 active:bg-emerald-200"
+                style={{ left: `${endPct}%` }}
+                onPointerDown={(e) => handleHandlePointerDown("end", e)}
+                title="نقطه پایان ویدیو"
+              >
+                <div className="w-0.5 h-3.5 bg-slate-950 rounded-full" />
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Multiple Items Selector Bar */}
         {items.length > 1 ? (
@@ -402,8 +659,8 @@ export default function MediaSendModal({
                   </span>
                 ) : null}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="grid grid-cols-3 gap-1.5 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="grid grid-cols-3 gap-1.5 flex-1 min-w-[200px]">
                   {[
                     { id: "720p", label: "720p HD" },
                     { id: "480p", label: "480p بهینه" },
@@ -427,20 +684,63 @@ export default function MediaSendModal({
                   })}
                 </div>
 
-                {/* Mute Video Button */}
-                <button
-                  type="button"
-                  onClick={() => updateActiveSetting("muteAudio", !currentSettings.muteAudio)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs transition ${
-                    currentSettings.muteAudio
-                      ? "bg-rose-500/20 border-rose-400 text-rose-300 font-bold"
-                      : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
-                  }`}
-                  title="ارسال ویدیو بدون صدا"
-                >
-                  {currentSettings.muteAudio ? <VolumeX size={15} /> : <Volume2 size={15} />}
-                  <span>{currentSettings.muteAudio ? "بدون صدا" : "با صدا"}</span>
-                </button>
+                {/* Quick Editing Tools for Video */}
+                <div className="flex items-center gap-1.5">
+                  {/* Rotate Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextRot = ((currentSettings.rotation || 0) + 90) % 360;
+                      updateActiveSetting("rotation", nextRot);
+                    }}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs transition ${
+                      currentSettings.rotation > 0
+                        ? "bg-amber-500/20 border-amber-400 text-amber-200 font-bold"
+                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                    }`}
+                    title="چرخش ۹۰ درجه ساعت‌گرد"
+                  >
+                    <Rotate size={13} className={currentSettings.rotation > 0 ? "text-amber-300" : ""} />
+                    <span>{currentSettings.rotation ? `${currentSettings.rotation}°` : "چرخش"}</span>
+                  </button>
+
+                  {/* Send as GIF Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextGif = !currentSettings.isGif;
+                      updateActiveSetting("isGif", nextGif);
+                      if (nextGif) {
+                        updateActiveSetting("muteAudio", true);
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs transition ${
+                      currentSettings.isGif
+                        ? "bg-purple-500/20 border-purple-400 text-purple-200 font-bold shadow-sm shadow-purple-500/20"
+                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                    }`}
+                    title="ارسال ویدیو به صورت گیف متحرک بدون صدا"
+                  >
+                    <Repeat size={13} />
+                    <span>گیف</span>
+                  </button>
+
+                  {/* Mute Video Button */}
+                  <button
+                    type="button"
+                    onClick={() => updateActiveSetting("muteAudio", !currentSettings.muteAudio)}
+                    disabled={currentSettings.isGif}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs transition disabled:opacity-50 ${
+                      currentSettings.muteAudio
+                        ? "bg-rose-500/20 border-rose-400 text-rose-300 font-bold"
+                        : "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                    }`}
+                    title="ارسال ویدیو بدون صدا"
+                  >
+                    {currentSettings.muteAudio ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <span>{currentSettings.muteAudio ? "بی‌صدا" : "صدا"}</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}

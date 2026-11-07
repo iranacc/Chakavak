@@ -5679,14 +5679,23 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       );
       return;
     }
+    // For media files, allow up to 500 MB raw input so user can compress/trim in MediaSendModal.
+    // For general documents (ZIP, PDF, etc.) that skip compression, enforce server limit immediately.
+    const maxSingleBytes =
+      uploadType === "media"
+        ? Math.max(CHAT_PAGE_CONFIG.maxFileSizeBytes, 500 * 1024 * 1024)
+        : CHAT_PAGE_CONFIG.maxFileSizeBytes;
+
     const oversize = incoming.find(
-      (file) => Number(file.size || 0) > CHAT_PAGE_CONFIG.maxFileSizeBytes,
+      (file) => Number(file.size || 0) > maxSingleBytes,
     );
     if (oversize) {
       setUploadError(
-        `Each file must be smaller than ${formatBytesAsMb(
-          CHAT_PAGE_CONFIG.maxFileSizeBytes,
-        )}.`,
+        uploadType === "media"
+          ? "حداکثر حجم فایل خام جهت ویرایش و فشرده‌سازی ۵۰۰ مگابایت است."
+          : `Each file must be smaller than ${formatBytesAsMb(
+              CHAT_PAGE_CONFIG.maxFileSizeBytes,
+            )}.`,
       );
       return;
     }
@@ -5696,11 +5705,18 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     );
     const incomingBytes = incoming.reduce((sum, file) => sum + Number(file.size || 0), 0);
     const totalBytes = existingBytes + incomingBytes;
-    if (totalBytes > CHAT_PAGE_CONFIG.maxTotalUploadBytes) {
+    const maxTotalBytes =
+      uploadType === "media"
+        ? Math.max(CHAT_PAGE_CONFIG.maxTotalUploadBytes, 1024 * 1024 * 1024)
+        : CHAT_PAGE_CONFIG.maxTotalUploadBytes;
+
+    if (totalBytes > maxTotalBytes) {
       setUploadError(
-        `Total upload size cannot exceed ${formatBytesAsMb(
-          CHAT_PAGE_CONFIG.maxTotalUploadBytes,
-        )}.`,
+        uploadType === "media"
+          ? "مجموع حجم فایل‌های رسانه انتخابی نباید بیش از ۱ گیگابایت باشد."
+          : `Total upload size cannot exceed ${formatBytesAsMb(
+              CHAT_PAGE_CONFIG.maxTotalUploadBytes,
+            )}.`,
       );
       return;
     }
@@ -5756,6 +5772,21 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   const handleConfirmMediaSend = useCallback(
     async (processedItems, caption = "", sendImmediately = true) => {
       if (!processedItems || !processedItems.length) return;
+
+      // Validate post-compression file sizes against server limits
+      const oversizeItem = processedItems.find(
+        (item) => Number(item.sizeBytes || item.file?.size || 0) > CHAT_PAGE_CONFIG.maxFileSizeBytes,
+      );
+      if (oversizeItem) {
+        setUploadError(
+          `فایل «${oversizeItem.name || "رسانه"}» (${formatBytesAsMb(
+            oversizeItem.sizeBytes || oversizeItem.file?.size || 0,
+          )}) از سقف مجاز سرور (${formatBytesAsMb(
+            CHAT_PAGE_CONFIG.maxFileSizeBytes,
+          )}) بزرگتر است. لطفاً کیفیت فشرده‌تری انتخاب کنید یا بخشی از ویدیو را برش دهید.`,
+        );
+        return;
+      }
 
       if (!sendImmediately) {
         setPendingUploadFiles(processedItems);
