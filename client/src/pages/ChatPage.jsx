@@ -860,27 +860,110 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   const handleVotePoll = useCallback(
     async (pollId, optionIndexes) => {
       if (!activeChatId || !pollId) return;
+
+      // 1. Optimistic UI update for instantaneous button & progress bar feedback
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg?.poll && String(msg.poll.id) === String(pollId)) {
+            const oldPoll = msg.poll;
+            const prevUserVotes = Array.isArray(oldPoll.myVotes)
+              ? oldPoll.myVotes
+              : (oldPoll.votes || [])
+                  .filter((v) => v.userId === user?.id)
+                  .map((v) => Number(v.optionIndex));
+            const wasVoted = prevUserVotes.length > 0;
+            const newOptionVotes = [...(oldPoll.optionVotes || [])];
+            prevUserVotes.forEach((idx) => {
+              if (newOptionVotes[idx] > 0) newOptionVotes[idx] -= 1;
+            });
+            optionIndexes.forEach((idx) => {
+              newOptionVotes[idx] = (newOptionVotes[idx] || 0) + 1;
+            });
+            const nextTotalVoters = wasVoted
+              ? Number(oldPoll.totalVoters || 0)
+              : Number(oldPoll.totalVoters || 0) + (optionIndexes.length > 0 ? 1 : 0);
+
+            return {
+              ...msg,
+              poll: {
+                ...oldPoll,
+                totalVoters: nextTotalVoters,
+                optionVotes: newOptionVotes,
+                myVotes: optionIndexes,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
+
       try {
-        await votePoll({
+        const res = await votePoll({
           chatId: activeChatId,
           pollId,
           optionIndexes,
         });
+        if (res?.poll) {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg?.poll && String(msg.poll.id) === String(pollId)) {
+                return {
+                  ...msg,
+                  poll: {
+                    ...res.poll,
+                    myVotes: optionIndexes,
+                  },
+                };
+              }
+              return msg;
+            }),
+          );
+        }
       } catch (err) {
         console.error("Failed to vote poll:", err);
       }
     },
-    [activeChatId],
+    [activeChatId, user?.id],
   );
 
   const handleClosePoll = useCallback(
     async (pollId) => {
       if (!activeChatId || !pollId) return;
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg?.poll && String(msg.poll.id) === String(pollId)) {
+            return {
+              ...msg,
+              poll: {
+                ...msg.poll,
+                isClosed: true,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
       try {
-        await closePoll({
+        const res = await closePoll({
           chatId: activeChatId,
           pollId,
         });
+        if (res?.poll) {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg?.poll && String(msg.poll.id) === String(pollId)) {
+                return {
+                  ...msg,
+                  poll: {
+                    ...res.poll,
+                    myVotes: msg.poll?.myVotes || [],
+                  },
+                };
+              }
+              return msg;
+            }),
+          );
+        }
       } catch (err) {
         console.error("Failed to close poll:", err);
       }

@@ -23,11 +23,20 @@ export const PollCard = memo(function PollCard({
 
   // Determine user votes
   const userVotedIndices = useMemo(() => {
-    if (!poll.votes || !currentUserId) return [];
-    return poll.votes
-      .filter((v) => v.userId === currentUserId)
-      .map((v) => Number(v.optionIndex));
-  }, [poll.votes, currentUserId]);
+    if (Array.isArray(poll.myVotes) && poll.myVotes.length > 0) {
+      return poll.myVotes.map(Number);
+    }
+    if (Array.isArray(poll.votes) && currentUserId) {
+      const fromVotes = poll.votes
+        .filter((v) => v.userId === currentUserId)
+        .map((v) => Number(v.optionIndex));
+      if (fromVotes.length > 0) return fromVotes;
+    }
+    if (Array.isArray(poll.myVotes)) {
+      return poll.myVotes.map(Number);
+    }
+    return [];
+  }, [poll.votes, poll.myVotes, currentUserId]);
 
   const hasVoted = userVotedIndices.length > 0;
 
@@ -102,7 +111,11 @@ export const PollCard = memo(function PollCard({
               key={idx}
               type="button"
               disabled={isClosed}
-              onClick={() => handleOptionClick(idx)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleOptionClick(idx);
+              }}
               className={`group relative flex w-full items-center justify-between overflow-hidden rounded-xl border p-2.5 text-start text-xs font-medium transition active:scale-[0.99] cursor-pointer ${
                 isSelected
                   ? "border-emerald-500/60 bg-emerald-500/15 dark:border-emerald-400/40 dark:bg-emerald-500/20"

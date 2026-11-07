@@ -526,7 +526,7 @@ function registerMessageRoutes(app, deps) {
     }
 
     if (messageIds.length && typeof getPollsByMessageIds === "function") {
-      const rawPolls = getPollsByMessageIds(messageIds);
+      const rawPolls = getPollsByMessageIds(messageIds, user.id);
       const pollsMap = (rawPolls && typeof rawPolls.then === "function" ? await rawPolls : rawPolls) || {};
       enriched.forEach((msg) => {
         if (msg?.id && pollsMap[msg.id]) {
@@ -2269,12 +2269,13 @@ function registerMessageRoutes(app, deps) {
         return res.status(400).json({ error: "Unable to record vote or poll is closed." });
       }
 
+      const broadcastPoll = getPollByMessageId(updatedPoll.messageId);
       emitChatEvent(chatId, {
         type: "poll_updated",
         chatId,
         pollId,
         messageId: updatedPoll.messageId,
-        poll: updatedPoll,
+        poll: broadcastPoll || updatedPoll,
       });
 
       return res.json({ ok: true, poll: updatedPoll });
@@ -2306,12 +2307,13 @@ function registerMessageRoutes(app, deps) {
         return res.status(404).json({ error: "Poll not found." });
       }
 
+      const broadcastPoll = getPollByMessageId(updatedPoll.messageId);
       emitChatEvent(chatId, {
         type: "poll_updated",
         chatId,
         pollId,
         messageId: updatedPoll.messageId,
-        poll: updatedPoll,
+        poll: broadcastPoll || updatedPoll,
       });
 
       return res.json({ ok: true, poll: updatedPoll });

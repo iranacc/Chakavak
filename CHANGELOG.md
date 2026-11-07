@@ -1,3 +1,14 @@
+## 0.24.2 - 2026-11-07
+
+### Fixed
+- **Polls & Quizzes Voting & Real-time Synchronization**:
+  - Resolved an issue where clicking poll options did not register or reflect user votes in the UI by introducing immediate optimistic state updates on button click in `ChatPage.jsx`.
+  - Added user-specific `myVotes` tracking on poll payloads in `server/db.js` (`formatPollRow`) and `server/api/messages.js`, ensuring anonymous polls properly remember the current user's selection without leaking identities to other participants.
+  - Fixed SSE real-time event filtering in `useChatEvents.js` where `poll_updated`, `message_reaction`, `e2ee_key_exchange`, and `voice_stage_*` events were unintentionally blocked before reaching their handlers.
+  - Added `poll_updated` real-time message state synchronization in `useChatEvents.js`.
+  - Updated `MessageItem.jsx` memoization signature (`getMessageRenderSignature`) to observe `myVotes` and user vote state, preventing React from skipping bubble re-renders.
+  - Added `e.preventDefault()` and `e.stopPropagation()` on poll option buttons to avoid any event capture or interference from parent surfaces.
+
 ## 0.24.1 - 2026-11-07
 
 ### Fixed

@@ -233,7 +233,11 @@ export function useChatEvents({
           payload.type !== "profile_updated" &&
           payload.type !== "chat_typing" &&
           payload.type !== "session_revoked" &&
-          payload.type !== "remote_channel_queue"
+          payload.type !== "remote_channel_queue" &&
+          payload.type !== "message_reaction" &&
+          payload.type !== "poll_updated" &&
+          payload.type !== "e2ee_key_exchange" &&
+          !String(payload.type).startsWith("voice_stage_")
         ) {
           return;
         }
@@ -377,6 +381,35 @@ export function useChatEvents({
                     return {
                       ...msg,
                       reactions: payload.reactions || [],
+                    };
+                  }
+                  return msg;
+                }),
+              );
+            }
+            return;
+          }
+          if (payload.type === "poll_updated") {
+            const payloadPollId = payload?.pollId;
+            const payloadMsgId = normalizeUuid(payload?.messageId) || null;
+            if (payload.poll) {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  const msgId = normalizeUuid(msg?._serverId || msg?.id);
+                  const isTargetMsg = payloadMsgId
+                    ? Boolean(msgId && msgId === payloadMsgId)
+                    : Boolean(msg?.poll && msg.poll.id === payloadPollId);
+                  if (isTargetMsg) {
+                    const existingMyVotes = msg.poll?.myVotes;
+                    return {
+                      ...msg,
+                      poll: {
+                        ...payload.poll,
+                        myVotes:
+                          Array.isArray(payload.poll.myVotes) && payload.poll.myVotes.length > 0
+                            ? payload.poll.myVotes
+                            : existingMyVotes || [],
+                      },
                     };
                   }
                   return msg;

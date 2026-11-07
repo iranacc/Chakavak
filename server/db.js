@@ -4612,14 +4612,14 @@ export function createPoll(pollData) {
   return id;
 }
 
-export function getPollByMessageId(messageId) {
+export function getPollByMessageId(messageId, viewerUserId = null) {
   if (!messageId) return null;
   const poll = getRow(`SELECT * FROM polls WHERE message_id = ?`, [String(messageId)]);
   if (!poll) return null;
-  return formatPollRow(poll);
+  return formatPollRow(poll, viewerUserId);
 }
 
-export function getPollsByMessageIds(messageIds) {
+export function getPollsByMessageIds(messageIds, viewerUserId = null) {
   const ids = (Array.isArray(messageIds) ? messageIds : [messageIds])
     .map((id) => String(id || "").trim())
     .filter(Boolean);
@@ -4629,12 +4629,12 @@ export function getPollsByMessageIds(messageIds) {
   const rows = getAll(`SELECT * FROM polls WHERE message_id IN (${placeholders})`, ids) || [];
   const map = {};
   rows.forEach((row) => {
-    map[row.message_id] = formatPollRow(row);
+    map[row.message_id] = formatPollRow(row, viewerUserId);
   });
   return map;
 }
 
-function formatPollRow(poll) {
+function formatPollRow(poll, viewerUserId = null) {
   let options = [];
   try {
     options = JSON.parse(poll.options || "[]");
@@ -4650,8 +4650,8 @@ function formatPollRow(poll) {
   ) || [];
 
   const optionVotes = options.map(() => 0);
-  const totalVotes = votes.length;
   const voterIds = new Set();
+  const myVotes = [];
 
   votes.forEach((v) => {
     const idx = Number(v.option_index);
@@ -4659,6 +4659,9 @@ function formatPollRow(poll) {
       optionVotes[idx] += 1;
     }
     voterIds.add(v.user_id);
+    if (viewerUserId && String(v.user_id) === String(viewerUserId)) {
+      myVotes.push(idx);
+    }
   });
 
   return {
@@ -4675,8 +4678,14 @@ function formatPollRow(poll) {
     isClosed: Boolean(poll.is_closed),
     totalVoters: voterIds.size,
     optionVotes,
+    myVotes,
     votes: poll.is_anonymous
-      ? []
+      ? (viewerUserId ? votes.filter((v) => String(v.user_id) === String(viewerUserId)).map((v) => ({
+          userId: v.user_id,
+          username: v.username,
+          nickname: v.nickname,
+          optionIndex: v.option_index,
+        })) : [])
       : votes.map((v) => ({
           userId: v.user_id,
           username: v.username,

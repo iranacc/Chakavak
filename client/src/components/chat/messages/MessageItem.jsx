@@ -152,7 +152,9 @@ const getMessageRenderSignature = (msg) => {
     getFileSignature(msg?.files),
     getFileSignature(msg?._files),
     (Array.isArray(msg?.reactions) ? msg.reactions.map((r) => r.emoji + r.userId).sort().join(",") : ""),
-    msg?.poll ? (msg.poll.id + ":" + msg.poll.totalVoters + ":" + (msg.poll.isClosed ? 1 : 0) + ":" + (msg.poll.optionVotes || []).join(",")) : "",
+    msg?.poll
+      ? `${msg.poll.id}:${msg.poll.totalVoters}:${msg.poll.isClosed ? 1 : 0}:${(msg.poll.optionVotes || []).join(",")}:${(msg.poll.myVotes || []).join(",")}:${(msg.poll.votes || []).length}`
+      : "",
   ].join("~~");
 };
 
@@ -1347,7 +1349,7 @@ export const MessageItem = memo(function MessageItem({
                     currentUserId={user?.id}
                     onVote={onVotePoll}
                     onClosePoll={onClosePoll}
-                    canClose={isOwn || user?.role === "admin" || user?.role === "owner"}
+                    canClose={msg.poll.creatorId === user?.id || isOwn || user?.role === "admin" || user?.role === "owner"}
                   />
                 ) : null}
 
@@ -1572,7 +1574,7 @@ export const MessageItem = memo(function MessageItem({
                     currentUserId={user?.id}
                     onVote={onVotePoll}
                     onClosePoll={onClosePoll}
-                    canClose={isOwn || user?.role === "admin" || user?.role === "owner"}
+                    canClose={msg.poll.creatorId === user?.id || isOwn || user?.role === "admin" || user?.role === "owner"}
                   />
                 ) : null}
               {mentionDebugEnabled ? (
