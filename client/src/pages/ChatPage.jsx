@@ -413,6 +413,22 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   const [editTarget, setEditTarget] = useState(null);
   const [messageDeleteScopeOpen, setMessageDeleteScopeOpen] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState(null);
+  const [chatDrafts, setChatDrafts] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("chakavak_chat_drafts") || "{}");
+      return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [pinnedByChat, setPinnedByChat] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("chakavak_pinned_messages") || "{}");
+      return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [forwardMessageTarget, setForwardMessageTarget] = useState(null);
   const [forwardSavedChat, setForwardSavedChat] = useState(null);
   const [forwardedChatPreviewById, setForwardedChatPreviewById] = useState({});
@@ -5818,7 +5834,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         }
       }
 
-      const replyPayload = !isEditingMessage && replyTarget
+      const isEditing = Boolean(editTarget?.id);
+      const replyPayload = !isEditing && replyTarget
         ? {
             id: replyTarget.id,
             username: replyTarget.username,
@@ -5882,7 +5899,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       activeChat,
       isActiveSavedChat,
       replyTarget,
-      isEditingMessage,
+      editTarget,
       user,
       updateOwnLatestChatPreview,
       sendPendingMessage,
@@ -7421,13 +7438,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     return Boolean(chatId && archivedChatIds.includes(chatId));
   }, [archivedChatIds]);
 
-  const [chatDrafts, setChatDrafts] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chakavak_chat_drafts") || "{}");
-    } catch {
-      return {};
-    }
-  });
+
 
   useEffect(() => {
     if (!activeChatId) return;
@@ -7437,13 +7448,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     }
   }, [activeChatId]);
 
-  const [pinnedByChat, setPinnedByChat] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chakavak_pinned_messages") || "{}");
-    } catch {
-      return {};
-    }
-  });
+
 
   const activePinnedMessage = useMemo(() => {
     if (!activeChatId) return null;
@@ -8533,7 +8538,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         isOpen={mediaSendModalOpen}
         onClose={() => setMediaSendModalOpen(false)}
         items={mediaSendModalItems}
-        initialCaption={composerInputRef.current?.value || chatDrafts[activeChatId] || ""}
+        initialCaption={composerInputRef.current?.value || (chatDrafts && activeChatId && chatDrafts[activeChatId]) || ""}
         onConfirm={handleConfirmMediaSend}
       />
       <CreatePollModal

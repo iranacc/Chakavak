@@ -1,3 +1,11 @@
+## 0.25.1 - 2026-11-07
+
+### Fixed
+- **Resolved App Entry Runtime Crash in ChatPage (`isEditingMessage` ReferenceError & Draft State Hoisting)**:
+  - Fixed an unhandled `ReferenceError: isEditingMessage is not defined` in `handleConfirmMediaSend` dependency array and body by scoping edit check to `const isEditing = Boolean(editTarget?.id)` and tracking `editTarget`.
+  - Hoisted `chatDrafts` and `pinnedByChat` state declarations to top of component, strictly adhering to hook ordering rules and preventing Temporal Dead Zone (TDZ).
+  - Added null-safe fallback for `chatDrafts` parsing and indexing in `MediaSendModal` props (`(chatDrafts && activeChatId && chatDrafts[activeChatId]) || ""`).
+
 ## 0.25.0 - 2026-11-07
 
 ### Added
