@@ -1,3 +1,8 @@
+## 0.23.2 - 2026-11-07
+
+### Fixed
+- **Group Conference Parameter Fix**: Fixed ReferenceError: onStartGroupConference is not defined in ChatWindowPanel.jsx by properly importing Users icon and destructuring onStartGroupConference from component props when entering group chats.
+
 ## 0.23.1 - 2026-11-06
 
 ### Fixed

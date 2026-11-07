@@ -19,6 +19,7 @@ import {
   Radio,
   Search,
   Sparkles,
+  Users,
   Video,
 } from "../../icons/lucide.js";
 import { getAvatarStyle } from "../../utils/avatarColor.js";
@@ -148,6 +149,7 @@ export default function ChatWindowPanel({
   registerMessageRef = null,
   onStartVoiceCall,
   onStartVideoCall,
+  onStartGroupConference = null,
   callsDisabled = false,
   videoCallsDisabled = false,
   isInCall = false,
