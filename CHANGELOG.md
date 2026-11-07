@@ -1,3 +1,12 @@
+## 0.24.7 - 2026-11-07
+
+### Added
+- **WebRTC Call Draggable Floating Thumbnail (Corner PiP)**:
+  - Enabled full pointer and touch dragging for the corner picture-in-picture video thumbnail in `CallScreen.jsx`: users can freely drag and reposition the floating camera window across the stage on both desktop and mobile devices.
+  - Implemented automatic 4-corner magnetic snap (`top-left`, `top-right`, `bottom-left`, `bottom-right`) with smooth CSS easing on pointer release.
+  - Added responsive auto-reclamping on viewport resize / device orientation changes.
+  - Added a dedicated swap button directly on the floating thumbnail and in the secondary bottom control bar next to layout mode, cleanly replacing the fixed bottom-right button and preventing tap/drag conflicts.
+
 ## 0.24.6 - 2026-11-07
 
 ### Fixed

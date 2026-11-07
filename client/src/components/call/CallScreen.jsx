@@ -118,6 +118,11 @@ export const CallScreen = memo(function CallScreen({
 
   const [position, setPosition] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [cornerPipPos, setCornerPipPos] = useState(null);
+  const [isDraggingCornerPip, setIsDraggingCornerPip] = useState(false);
+  const isDraggingCornerPipRef = useRef(false);
+  const pipStageRef = useRef(null);
+  const cornerPipBoxRef = useRef(null);
   const [restoredFromPip, setRestoredFromPip] = useState(false);
   const [pipOriginStyle, setPipOriginStyle] = useState(undefined);
   const [remoteAspect, setRemoteAspect] = useState(3 / 4);
@@ -201,6 +206,7 @@ export const CallScreen = memo(function CallScreen({
       setPipOriginStyle(undefined);
       setMinimized(false);
       setPosition(null);
+      setCornerPipPos(null);
     }
   }, [callState, isEnding, setMinimized]);
 
@@ -440,6 +446,101 @@ export const CallScreen = memo(function CallScreen({
     setRestoredFromPip(true);
     setMinimized(false);
   };
+
+  const handleCornerPipPointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const stage = pipStageRef.current;
+    const box = cornerPipBoxRef.current;
+    if (!stage || !box) return;
+
+    const stageRect = stage.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    const startPointerX = e.clientX;
+    const startPointerY = e.clientY;
+    const startBoxX = boxRect.left - stageRect.left;
+    const startBoxY = boxRect.top - stageRect.top;
+    const boxWidth = boxRect.width;
+    const boxHeight = boxRect.height;
+    const stageWidth = stageRect.width;
+    const stageHeight = stageRect.height;
+
+    let moved = false;
+    let currentX = startBoxX;
+    let currentY = startBoxY;
+
+    const onPointerMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startPointerX;
+      const dy = moveEvent.clientY - startPointerY;
+      if (!moved && Math.hypot(dx, dy) > 5) {
+        moved = true;
+        isDraggingCornerPipRef.current = true;
+        setIsDraggingCornerPip(true);
+      }
+      if (moved) {
+        const PADDING = 12;
+        const maxX = Math.max(0, stageWidth - boxWidth - PADDING);
+        const maxY = Math.max(0, stageHeight - boxHeight - PADDING);
+        currentX = Math.min(Math.max(PADDING, startBoxX + dx), maxX);
+        currentY = Math.min(Math.max(PADDING, startBoxY + dy), maxY);
+        setCornerPipPos({ x: currentX, y: currentY });
+      }
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+
+      if (moved) {
+        setIsDraggingCornerPip(false);
+        const PADDING = 16;
+        const maxX = Math.max(PADDING, stageWidth - boxWidth - PADDING);
+        const maxY = Math.max(PADDING, stageHeight - boxHeight - PADDING);
+
+        // Snap to nearest of the 4 corners:
+        const snapX =
+          currentX + boxWidth / 2 < stageWidth / 2 ? PADDING : maxX;
+        const snapY =
+          currentY + boxHeight / 2 < stageHeight / 2 ? PADDING : maxY;
+
+        setCornerPipPos({ x: snapX, y: snapY });
+
+        setTimeout(() => {
+          isDraggingCornerPipRef.current = false;
+        }, 80);
+      }
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+  };
+
+  // Re-clamp corner PiP position on window resize
+  useEffect(() => {
+    if (!cornerPipPos) return;
+    const handleResize = () => {
+      const stage = pipStageRef.current;
+      const box = cornerPipBoxRef.current;
+      if (!stage || !box) return;
+      const stageRect = stage.getBoundingClientRect();
+      const boxRect = box.getBoundingClientRect();
+      const PADDING = 16;
+      const maxX = Math.max(PADDING, stageRect.width - boxRect.width - PADDING);
+      const maxY = Math.max(PADDING, stageRect.height - boxRect.height - PADDING);
+
+      setCornerPipPos((prev) => {
+        if (!prev) return null;
+        const snapX =
+          prev.x + boxRect.width / 2 < stageRect.width / 2 ? PADDING : maxX;
+        const snapY =
+          prev.y + boxRect.height / 2 < stageHeight / 2 ? PADDING : maxY;
+        return { x: snapX, y: snapY };
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [cornerPipPos]);
 
   const ringtoneRef = useRef(null);
 
@@ -712,6 +813,21 @@ export const CallScreen = memo(function CallScreen({
           </button>
         </Tooltip>
       ) : null}
+
+      {/* Swap Cameras in PiP Mode */}
+      {bothOn && layoutMode === "pip" ? (
+        <Tooltip label="تغییر نمای دوربین‌ها / Swap cameras">
+          <button
+            type="button"
+            onClick={() => setIsSwapped((prev) => !prev)}
+            disabled={isEnding}
+            className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/10 text-white/90 hover:bg-white/20 transition active:scale-95"
+            aria-label="Swap cameras"
+          >
+            <ArrowLeftRight size={18} />
+          </button>
+        </Tooltip>
+      ) : null}
     </div>
   ) : null;
 
@@ -864,6 +980,7 @@ export const CallScreen = memo(function CallScreen({
                     setRestoredFromPip(false);
                     setPipOriginStyle(undefined);
                     setPosition(null);
+      setCornerPipPos(null);
                     setMinimized(true);
                   }}
                   disabled={isEnding}
@@ -959,19 +1076,42 @@ export const CallScreen = memo(function CallScreen({
             </div>
           </div>
         ) : (
-          /* PiP Mode with Persistent Video Nodes & Geometry Swap */
-          <div className="relative z-10 mx-2 min-h-0 w-[calc(100%-1rem)] flex-1 overflow-hidden rounded-2xl bg-black/40">
-            {/* Remote Video: Main Stage when !isSwapped, Corner PiP when isSwapped */}
+          /* PiP Mode with Draggable Floating Thumbnail & Persistent Video Nodes */
+          <div
+            ref={pipStageRef}
+            className="relative z-10 mx-2 min-h-0 w-[calc(100%-1rem)] flex-1 overflow-hidden rounded-2xl bg-black/40"
+          >
+            {/* Remote Video Container */}
             <div
-              onClick={isSwapped ? () => setIsSwapped(false) : undefined}
-              role={isSwapped ? "button" : undefined}
-              tabIndex={isSwapped ? 0 : undefined}
-              style={isSwapped ? { aspectRatio: `${remoteAspect}` } : undefined}
-              className={
-                !isSwapped
-                  ? "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto"
-                  : `absolute bottom-6 right-6 z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-emerald-400 active:scale-95 flex items-center justify-center pointer-events-auto ${pipSizing}`
-              }
+              {...(isSwapped
+                ? {
+                    ref: cornerPipBoxRef,
+                    onPointerDown: handleCornerPipPointerDown,
+                    onClick: () => {
+                      if (!isDraggingCornerPipRef.current) setIsSwapped(false);
+                    },
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "Remote video thumbnail (click to swap, drag to move)",
+                    title: "برای جابجایی بکشید • کلیک برای تغییر نما",
+                    style: {
+                      aspectRatio: `${remoteAspect}`,
+                      ...(cornerPipPos
+                        ? { left: `${cornerPipPos.x}px`, top: `${cornerPipPos.y}px` }
+                        : {}),
+                    },
+                    className: `${
+                      cornerPipPos ? "absolute" : "absolute bottom-6 right-6"
+                    } z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center pointer-events-auto ${
+                      isDraggingCornerPip
+                        ? "transition-none shadow-emerald-500/30 ring-2 ring-emerald-400"
+                        : "transition-[left,top] duration-300 ease-out hover:border-emerald-400"
+                    } ${pipSizing}`,
+                  }
+                : {
+                    className:
+                      "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto",
+                  })}
             >
               <video
                 key="remote-call-video"
@@ -1003,32 +1143,60 @@ export const CallScreen = memo(function CallScreen({
                   </span>
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 z-10 rounded-lg bg-slate-900/80 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none">
+              <div
+                className={`absolute ${
+                  isSwapped ? "bottom-2 left-2 px-2 py-0.5 text-[10px]" : "bottom-3 left-3 px-2.5 py-1 text-[11px]"
+                } z-10 rounded-lg bg-slate-900/80 font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none`}
+              >
                 {peerName}
               </div>
               {isSwapped && (
-                <div
-                  className="absolute inset-0 z-20 flex items-center justify-center bg-black/25 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="جابجایی تصویر / Swap"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSwapped(false);
+                  }}
+                  className="absolute top-2.5 right-2.5 z-40 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/85 text-white/90 shadow-lg backdrop-blur-md border border-white/25 hover:bg-emerald-600 hover:text-white transition active:scale-90 cursor-pointer pointer-events-auto"
+                  title="تغییر نمای دوربین‌ها / Swap"
+                  aria-label="Swap view"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-xl border border-white/30">
-                    <ArrowLeftRight size={18} />
-                  </div>
-                </div>
+                  <ArrowLeftRight size={13} />
+                </button>
               )}
             </div>
 
-            {/* Local Video: Corner PiP when !isSwapped, Main Stage when isSwapped */}
+            {/* Local Video Container */}
             <div
-              onClick={!isSwapped ? () => setIsSwapped(true) : undefined}
-              role={!isSwapped ? "button" : undefined}
-              tabIndex={!isSwapped ? 0 : undefined}
-              style={!isSwapped ? { aspectRatio: `${localAspect}` } : undefined}
-              className={
-                isSwapped
-                  ? "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto"
-                  : `absolute bottom-6 right-6 z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-emerald-400 active:scale-95 flex items-center justify-center pointer-events-auto ${pipSizing}`
-              }
+              {...(!isSwapped
+                ? {
+                    ref: cornerPipBoxRef,
+                    onPointerDown: handleCornerPipPointerDown,
+                    onClick: () => {
+                      if (!isDraggingCornerPipRef.current) setIsSwapped(true);
+                    },
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "Local video thumbnail (click to swap, drag to move)",
+                    title: "برای جابجایی بکشید • کلیک برای تغییر نما",
+                    style: {
+                      aspectRatio: `${localAspect}`,
+                      ...(cornerPipPos
+                        ? { left: `${cornerPipPos.x}px`, top: `${cornerPipPos.y}px` }
+                        : {}),
+                    },
+                    className: `${
+                      cornerPipPos ? "absolute" : "absolute bottom-6 right-6"
+                    } z-30 overflow-hidden rounded-2xl border-2 border-white/60 bg-slate-950 shadow-2xl cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center pointer-events-auto ${
+                      isDraggingCornerPip
+                        ? "transition-none shadow-emerald-500/30 ring-2 ring-emerald-400"
+                        : "transition-[left,top] duration-300 ease-out hover:border-emerald-400"
+                    } ${pipSizing}`,
+                  }
+                : {
+                    className:
+                      "absolute inset-0 h-full w-full z-0 overflow-hidden flex items-center justify-center pointer-events-auto",
+                  })}
             >
               <video
                 key="local-call-video"
@@ -1052,35 +1220,28 @@ export const CallScreen = memo(function CallScreen({
                   </span>
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 z-10 rounded-lg bg-slate-900/80 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none">
+              <div
+                className={`absolute ${
+                  !isSwapped ? "bottom-2 left-2 px-2 py-0.5 text-[10px]" : "bottom-3 left-3 px-2.5 py-1 text-[11px]"
+                } z-10 rounded-lg bg-slate-900/80 font-semibold text-white/90 backdrop-blur-md pointer-events-none select-none`}
+              >
                 شما • You
               </div>
               {!isSwapped && (
-                <div
-                  className="absolute inset-0 z-20 flex items-center justify-center bg-black/25 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                  title="جابجایی تصویر / Swap"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSwapped(true);
+                  }}
+                  className="absolute top-2.5 right-2.5 z-40 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/85 text-white/90 shadow-lg backdrop-blur-md border border-white/25 hover:bg-emerald-600 hover:text-white transition active:scale-90 cursor-pointer pointer-events-auto"
+                  title="تغییر نمای دوربین‌ها / Swap"
+                  aria-label="Swap view"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-xl border border-white/30">
-                    <ArrowLeftRight size={18} />
-                  </div>
-                </div>
+                  <ArrowLeftRight size={13} />
+                </button>
               )}
             </div>
-
-            {/* Floating Swap Action Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsSwapped((prev) => !prev);
-              }}
-              className="absolute bottom-8 right-8 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-2xl backdrop-blur-md border-2 border-white/40 transition hover:scale-110 hover:bg-emerald-600 active:scale-90 cursor-pointer pointer-events-auto"
-              title="تغییر نمای دوربین‌ها / Swap view"
-              aria-label="Swap video position"
-            >
-              <ArrowLeftRight size={20} />
-            </button>
           </div>
         )
       ) : null}
