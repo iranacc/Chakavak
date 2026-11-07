@@ -429,26 +429,53 @@ export async function compressVideoFile(file, options = {}) {
     video = document.createElement("video");
     video.autoplay = false;
     video.playsInline = true;
-    video.muted = muteAudio;
-    video.volume = muteAudio ? 0 : 1;
     video.preload = "auto";
     video.src = URL.createObjectURL(file);
 
-    // CRITICAL: Attach to DOM so Chromium compositor grants full GPU/hardware decoding
-    // instead of throttling headless elements to 5-10 fps
-    video.style.position = "fixed";
-    video.style.top = "-9999px";
-    video.style.left = "-9999px";
-    video.style.width = "320px";
-    video.style.height = "240px";
-    video.style.opacity = "0.01";
-    video.style.pointerEvents = "none";
-    video.style.zIndex = "-1";
-    document.body.appendChild(video);
+    // CRITICAL: Mount inside active viewport or user container.
+    // Placing offscreen (-9999px) or opacity: 0 triggers Chromium compositor throttling
+    // which drops requestVideoFrameCallback decoding to 1-5 fps.
+    if (options.containerElement && typeof options.containerElement.appendChild === "function") {
+      video.style.width = "100%";
+      video.style.height = "100%";
+      video.style.objectFit = "contain";
+      video.style.display = "block";
+      options.containerElement.appendChild(video);
+    } else {
+      video.style.position = "fixed";
+      video.style.top = "0px";
+      video.style.left = "0px";
+      video.style.width = "160px";
+      video.style.height = "120px";
+      video.style.opacity = "0.02";
+      video.style.pointerEvents = "none";
+      video.style.zIndex = "99999";
+      document.body.appendChild(video);
+    }
 
     await new Promise((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = reject;
+      let resolved = false;
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          reject(new Error("Video metadata load timeout"));
+        }
+      }, 10000);
+
+      video.onloadedmetadata = () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      };
+      video.onerror = (e) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
+          reject(e || new Error("Video loading error"));
+        }
+      };
     });
 
     const vW = video.videoWidth || 640;
@@ -462,12 +489,21 @@ export async function compressVideoFile(file, options = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = targetW;
     canvas.height = targetH;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    // CRITICAL: Hardware-accelerated Canvas 2D (DO NOT use willReadFrequently which forces software CPU fallback)
+    const ctx =
+      canvas.getContext("2d", { alpha: false, desynchronized: true }) ||
+      canvas.getContext("2d");
 
-    // Use 30 fps stream capture
+    // Pre-paint initial video frame onto canvas before recording starts
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, targetW, targetH);
+    }
+
+    // Capture 30 fps stream from hardware canvas
     const stream = canvas.captureStream(30);
+    const videoTrack = stream.getVideoTracks()[0] || null;
 
-    // Audio handling: if not muted, capture audio silently via Web Audio API without blasting speakers
+    // Audio handling: if not muted, route audio into stream silently via Web Audio API
     if (!muteAudio) {
       const AudioCtx =
         typeof window !== "undefined" &&
@@ -503,7 +539,7 @@ export async function compressVideoFile(file, options = {}) {
     const recordedChunks = [];
     const recorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: preset.bitrate || 3200000,
+      videoBitsPerSecond: preset.bitrate || 2500000,
     });
 
     recorder.ondataavailable = (e) => {
@@ -517,12 +553,23 @@ export async function compressVideoFile(file, options = {}) {
       };
     });
 
-    recorder.start(100);
+    // Start video playback FIRST to ensure presentation clock and hardware decoder are active
+    video.currentTime = 0;
+    video.muted = muteAudio;
+    video.volume = muteAudio ? 0 : 1;
+
+    try {
+      await video.play();
+    } catch (playErr) {
+      console.warn("Unmuted video play rejected by browser autoplay policy, attempting muted play:", playErr);
+      video.muted = true;
+      await video.play().catch(() => {});
+    }
+
+    // Start recording at 1000ms timeslices (avoids interrupting event loop 10 times a second)
+    recorder.start(1000);
 
     // Draw video frames synchronized to hardware presentation
-    video.currentTime = 0;
-    await video.play().catch(() => {});
-
     await new Promise((resolve) => {
       let active = true;
 
@@ -533,22 +580,38 @@ export async function compressVideoFile(file, options = {}) {
       };
 
       video.onended = finish;
+      video.onerror = finish;
       video.onpause = () => {
         if (video.currentTime >= duration - 0.25) {
           finish();
         }
       };
 
+      // Safety timeout in case browser never fires onended
+      const maxSafetyMs = Math.max(10000, Math.ceil((duration + 4) * 1000));
+      const safetyTimer = setTimeout(() => {
+        if (active) {
+          console.warn("Video compression safety timeout reached, concluding stream");
+          finish();
+        }
+      }, maxSafetyMs);
+
       const hasVideoFrameCallback = typeof video.requestVideoFrameCallback === "function";
 
       if (hasVideoFrameCallback) {
         function onFrame() {
           if (!active) return;
-          if (video.ended || video.paused) {
+          if (video.ended || (video.paused && video.currentTime >= duration - 0.25)) {
+            clearTimeout(safetyTimer);
             finish();
             return;
           }
-          ctx.drawImage(video, 0, 0, targetW, targetH);
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, targetW, targetH);
+          }
+          if (videoTrack && typeof videoTrack.requestFrame === "function") {
+            try { videoTrack.requestFrame(); } catch (_) {}
+          }
           if (options.onProgress && duration > 0) {
             options.onProgress(Math.min(1.0, video.currentTime / duration));
           }
@@ -558,11 +621,17 @@ export async function compressVideoFile(file, options = {}) {
       } else {
         function onRaf() {
           if (!active) return;
-          if (video.ended || video.paused) {
+          if (video.ended || (video.paused && video.currentTime >= duration - 0.25)) {
+            clearTimeout(safetyTimer);
             finish();
             return;
           }
-          ctx.drawImage(video, 0, 0, targetW, targetH);
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, targetW, targetH);
+          }
+          if (videoTrack && typeof videoTrack.requestFrame === "function") {
+            try { videoTrack.requestFrame(); } catch (_) {}
+          }
           if (options.onProgress && duration > 0) {
             options.onProgress(Math.min(1.0, video.currentTime / duration));
           }

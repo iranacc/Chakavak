@@ -190,6 +190,11 @@ export default function MediaSendModal({
           const compResult = await compressVideoFile(item.file, {
             targetQuality: settings.videoPreset,
             muteAudio: settings.muteAudio,
+            onProgress: (p) => {
+              const base = (i / total) * 100;
+              const share = (1 / total) * 100;
+              setProcessingProgress(Math.min(99, Math.round(base + p * share)));
+            },
           });
           if (compResult && compResult.file) {
             processedFile = compResult.file;
@@ -283,10 +288,32 @@ export default function MediaSendModal({
           )}
 
           {/* Size Savings Badge Overlay */}
-          {estimatedInfo && estimatedInfo.savingsPercent > 0 ? (
+          {estimatedInfo && estimatedInfo.savingsPercent > 0 && !isProcessing ? (
             <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/90 text-white text-[11px] font-bold shadow-lg backdrop-blur-md animate-pop-in">
               <Zap size={13} className="text-amber-200 fill-amber-200" />
               <span>{estimatedInfo.savingsPercent}٪ کاهش حجم</span>
+            </div>
+          ) : null}
+
+          {/* Processing Progress Overlay */}
+          {isProcessing ? (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm p-6 text-center space-y-3 animate-fade-in">
+              <div className="relative flex items-center justify-center">
+                <LoaderCircle size={48} className="text-emerald-400 animate-spin" />
+                <span className="absolute text-[12px] font-bold text-white font-mono">{processingProgress}%</span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-white">در حال بهینه‌سازی مدیا...</p>
+                <p className="text-[11px] text-white/60 max-w-xs">
+                  پردازش روان با شتاب‌دهنده سخت‌افزاری جهت کاهش حجم و ارسال پرسرعت
+                </p>
+              </div>
+              <div className="w-52 h-2 rounded-full bg-white/10 overflow-hidden shadow-inner">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-200 ease-out"
+                  style={{ width: `${processingProgress}%` }}
+                />
+              </div>
             </div>
           ) : null}
         </div>

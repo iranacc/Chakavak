@@ -1,3 +1,13 @@
+## 0.25.3 - 2026-11-07
+
+### Fixed
+- **Root-Cause Resolution for Client-Side Video Compression Choppiness & Frame Drops**:
+  - **Eliminated Chromium Offscreen Throttling**: Fixed video element positioning to stay within active viewport bounds (`top: 0, left: 0, 160x120px, z-index: 99999`) or user-provided container instead of `-9999px`. Completely bypasses Chromium compositor occlusion tracking and power-saving heuristics that throttled video decoding and `requestVideoFrameCallback` down to 1–5 fps.
+  - **Restored GPU Hardware Acceleration on Canvas**: Removed `{ willReadFrequently: true }` (which previously forced software CPU rasterization and PCI bus memory transfers on every frame) and enabled `{ alpha: false, desynchronized: true }` for direct, high-speed GPU rendering pipeline.
+  - **Synchronized Presentation Clocks & MediaRecorder Start**: Ensured initial video frame is pre-painted to canvas and video presentation is actively playing before starting `recorder.start(1000)` (recording in 1-second chunks instead of interrupting main thread every 100ms), eliminating audio/video synchronization drift and initial frozen frames.
+  - **Autoplay Policy & Mute Resilience**: Programmatically handles browser autoplay policies by attempting unmuted playback with Web Audio routing to avoid device speaker output, falling back gracefully to muted mode if transient activation was expired.
+  - **Live Progress & Interactive Overlay**: Updated `MediaSendModal.jsx` to pass real-time progress callbacks to `compressVideoFile` and render a modern glassmorphic progress bar overlay with percentage completion.
+
 ## 0.25.2 - 2026-11-07
 
 ### Fixed
