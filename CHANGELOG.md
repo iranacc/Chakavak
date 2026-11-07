@@ -1,3 +1,12 @@
+## 0.24.0 - 2026-11-07
+
+### Added & Enhanced
+- **Modern Split Showcase Landing Page (AuthPage)**:
+  - **Interactive Feature Showcase**: Redesigned the authentication and welcome experience with an asymmetric split layout. The right side features a rich Bento-grid showcase presenting Chakavak's key capabilities: End-to-End Encrypted Secret Chats (E2EE), HD WebRTC Audio/Video Calls with AI background blur, Persistent Voice Stages, and modern interactive messaging tools (Polls, Stickers, GIFs, Scheduled & Silent messages).
+  - **Sleek Glassmorphic Form**: Redesigned the login and registration forms with frosted glass aesthetics, clear typography, password visibility toggles, seamless mode switching, responsive layout adaptations, and dark/light mode toggles.
+  - **Adaptive Mobile Ergonomics**: Added collapsible mobile showcase controls ("مشاهده تمام امکانات چکاوک") to ensure clean, clutter-free mobile experience with instant access to feature highlights.
+  - **Layout & Routing Clean-up**: Integrated cleanly with `App.jsx` native authentication handlers and removed duplicate header containers on authentication routes.
+
 ## 0.23.2 - 2026-11-07
 
 ### Fixed

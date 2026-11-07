@@ -985,7 +985,7 @@ export default function App() {
         <div
           className={
             isAuthRoute
-              ? 'mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-8 pt-6 sm:px-6 sm:pb-16 sm:pt-10'
+              ? 'mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-3 py-4 sm:px-6 sm:py-8'
               : 'relative flex h-full min-h-0 w-full flex-col px-0 pb-0 pt-0'
           }
           style={{
@@ -993,20 +993,7 @@ export default function App() {
             zIndex: routeChunkLoading ? '70' : 'var(--app-z, 20)',
           }}
         >
-          {isAuthRoute ? (
-            <header className="flex flex-wrap items-center justify-center gap-3 text-center sm:gap-4">
-              <div className="flex items-center gap-1 text-black dark:text-white">
-                <div className="flex h-8 w-8 items-center justify-center sm:h-9 sm:w-9">
-                  <img src={logo} alt="Chakavak logo" className="h-8 w-8 sm:h-9 sm:w-9 object-contain" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold tracking-tight sm:text-2xl">چکاوک</p>
-                </div>
-              </div>
-            </header>
-          ) : null}
-
-          <main className={isAuthRoute ? 'flex flex-1 items-center justify-center px-1 py-6 sm:mt-0 sm:px-0 sm:py-8' : 'flex min-h-0 flex-1'}>
+          <main className={isAuthRoute ? 'flex flex-1 items-center justify-center w-full' : 'flex min-h-0 flex-1'}>
             <Suspense
               fallback={
                 <RouteLoadingFallback
