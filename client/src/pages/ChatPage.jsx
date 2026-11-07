@@ -6,6 +6,7 @@ import { GroupConferenceModal } from "../components/call/GroupConferenceModal.js
 import { ChatSidebar } from "../components/sidebar/index.js";
 import { CreatePollModal } from "../components/modals/CreatePollModal.jsx";
 import ScheduledMessagesListModal from "../components/modals/ScheduledMessagesListModal.jsx";
+import MediaSendModal from "../components/modals/MediaSendModal.jsx";
 import { formatStickerMessage, formatGifMessage } from "../utils/specialMessage.js";
 import AppContextMenu from "../components/context-menu/AppContextMenu.jsx";
 import { useAppContextMenu } from "../components/context-menu/useAppContextMenu.js";
@@ -402,6 +403,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   const [unreadInChat, setUnreadInChat] = useState(0);
   const [unreadMarkerId, setUnreadMarkerId] = useState(null);
   const [pendingUploadFiles, setPendingUploadFiles] = useState([]);
+  const [mediaSendModalOpen, setMediaSendModalOpen] = useState(false);
+  const [mediaSendModalItems, setMediaSendModalItems] = useState([]);
   const [pendingUploadType, setPendingUploadType] = useState("");
   const [pendingVoiceMessage, setPendingVoiceMessage] = useState(null);
   const [uploadError, setUploadError] = useState("");
@@ -5721,12 +5724,173 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         : null,
     }));
 
+    if (uploadType === "media") {
+      setMediaSendModalItems(nextItems);
+      setMediaSendModalOpen(true);
+      return;
+    }
+
     setPendingUploadFiles((prev) => (append ? [...prev, ...nextItems] : nextItems));
     setPendingUploadType(uploadType);
     if (activeChatId && !userScrolledUpRef.current) {
       scrollToBottomIfSafe("auto");
     }
   }
+
+  const handleConfirmMediaSend = useCallback(
+    async (processedItems, caption = "", sendImmediately = true) => {
+      if (!processedItems || !processedItems.length) return;
+
+      if (!sendImmediately) {
+        setPendingUploadFiles(processedItems);
+        setPendingUploadType("media");
+        if (caption) {
+          if (composerInputRef.current) {
+            composerInputRef.current.value = caption;
+          }
+          if (activeChatId) {
+            setChatDrafts((prev) => {
+              const next = { ...prev, [activeChatId]: caption };
+              try {
+                localStorage.setItem("chakavak_chat_drafts", JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+          }
+        }
+        if (activeChatId && !userScrolledUpRef.current) {
+          scrollToBottomIfSafe("auto");
+        }
+        return;
+      }
+
+      const shouldSnapToBottom = true;
+      userScrolledUpRef.current = false;
+      setUserScrolledUp(false);
+      isAtBottomRef.current = true;
+      setIsAtBottom(true);
+      shouldAutoMarkReadRef.current = true;
+      setUnreadMarkerId(null);
+      unreadMarkerIdRef.current = null;
+
+      const trimmedBody = (caption || "").trim();
+      const isSavedChat = isActiveSavedChat;
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const createdAt = new Date().toISOString();
+      const queuedAt = Date.now();
+      const pendingDate = parseServerDate(createdAt);
+      const pendingDayKey = `${pendingDate.getFullYear()}-${pendingDate.getMonth()}-${pendingDate.getDate()}`;
+
+      const pendingFiles = processedItems.map((item) => {
+        const localUrl =
+          item.file instanceof Blob &&
+          (String(item.mimeType || "").startsWith("image/") ||
+            String(item.mimeType || "").startsWith("video/") ||
+            String(item.mimeType || "").startsWith("audio/"))
+            ? URL.createObjectURL(item.file)
+            : item.previewUrl || null;
+        return {
+          id: item.id,
+          _localId: item.id,
+          kind: "media",
+          name: item.name,
+          mimeType: item.mimeType,
+          sizeBytes: item.sizeBytes,
+          width: Number.isFinite(Number(item.width)) ? Number(item.width) : null,
+          height: Number.isFinite(Number(item.height)) ? Number(item.height) : null,
+          durationSeconds: Number.isFinite(Number(item.durationSeconds))
+            ? Number(item.durationSeconds)
+            : null,
+          url: localUrl,
+          _localUrl: localUrl,
+          file: item.file,
+        };
+      });
+
+      let effectiveOutgoingBody = trimmedBody;
+      let optimisticPlaintext = null;
+      if (activeChat?.type === "secret" && trimmedBody) {
+        optimisticPlaintext = trimmedBody;
+        try {
+          effectiveOutgoingBody = await encryptSecretMessage(activeChatId, trimmedBody);
+        } catch (err) {
+          console.warn("E2EE encrypt error:", err);
+        }
+      }
+
+      const replyPayload = !isEditingMessage && replyTarget
+        ? {
+            id: replyTarget.id,
+            username: replyTarget.username,
+            nickname: replyTarget.nickname,
+            body: replyTarget.body,
+            icon: replyTarget.icon || null,
+            displayName: replyTarget.displayName,
+            color: replyTarget.color || null,
+          }
+        : null;
+
+      clearPendingUploads();
+      clearPendingVoiceMessage();
+      pendingScrollToBottomRef.current = shouldSnapToBottom;
+
+      const pendingMessage = {
+        _clientId: tempId,
+        client_request_id: tempId,
+        _chatId: activeChatId,
+        _queuedAt: queuedAt,
+        _delivery: "sending",
+        _editMessageId: null,
+        _uploadType: "media",
+        _files: pendingFiles,
+        _createdAt: createdAt,
+        _dayKey: pendingDayKey,
+        body: effectiveOutgoingBody,
+        _optimisticPlaintext: optimisticPlaintext,
+        replyTo: replyPayload,
+        is_silent: 0,
+        _isSilent: false,
+        read_at: isSavedChat ? createdAt : null,
+        read_by_user_id: isSavedChat ? user?.id || null : null,
+      };
+
+      updateOwnLatestChatPreview({
+        chatId: activeChatId,
+        body: pendingMessage.body,
+        files: pendingFiles,
+        createdAt,
+      });
+
+      if (composerInputRef.current) {
+        composerInputRef.current.value = "";
+      }
+      setChatDrafts((prev) => {
+        if (!prev[activeChatId]) return prev;
+        const next = { ...prev };
+        delete next[activeChatId];
+        try {
+          localStorage.setItem("chakavak_chat_drafts", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+
+      await sendPendingMessage(pendingMessage);
+      setReplyTarget(null);
+    },
+    [
+      activeChatId,
+      activeChat,
+      isActiveSavedChat,
+      replyTarget,
+      isEditingMessage,
+      user,
+      updateOwnLatestChatPreview,
+      sendPendingMessage,
+      clearPendingUploads,
+      clearPendingVoiceMessage,
+      scrollToBottomIfSafe,
+    ],
+  );
 
   const handleMessageInput = useCallback(
     (value) => {
@@ -8365,6 +8529,13 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
           }}
         />
       )}
+      <MediaSendModal
+        isOpen={mediaSendModalOpen}
+        onClose={() => setMediaSendModalOpen(false)}
+        items={mediaSendModalItems}
+        initialCaption={composerInputRef.current?.value || chatDrafts[activeChatId] || ""}
+        onConfirm={handleConfirmMediaSend}
+      />
       <CreatePollModal
         open={showPollModal}
         onClose={() => setShowPollModal(false)}

@@ -1,3 +1,22 @@
+## 0.25.0 - 2026-11-07
+
+### Added
+- **Client-Side Image and Video Compression with Live Preview (فشرده‌سازی و تغییر سایز عکس و ویدیو در زمان ارسال)**:
+  - Implemented 100% client-side in-flight media compression engine in `client/src/utils/mediaCompressor.js`:
+    - Canvas & OffscreenCanvas hardware-accelerated downscaling and conversion to WebP with aspect ratio preservation.
+    - Image presets: `balanced` (Full HD 1080p WebP, 82% quality, ~85-92% size reduction), `eco` (HD 720p WebP, 72% quality, ~93-97% size reduction), and `original` (uncompressed pass-through).
+    - Video downscaling engine via Canvas + MediaRecorder with bitrate optimization for `720p` and `480p`.
+    - Video audio stripping toggle (`muteAudio`) for silent video uploads.
+    - Intelligent animated GIF and SVG preservation (prevents losing GIF animations or vector sharpness).
+    - File size safety check: automatically retains original file if compression unexpectedly yields a larger size.
+  - Interactive Glassmorphic Media Modal (`client/src/components/modals/MediaSendModal.jsx`):
+    - Multi-media carousel and preview with per-item quality preset selector.
+    - Real-time estimated size display and savings percentage badge (e.g. `4.2 MB ➔ ~340 KB (-92%)`).
+    - Integrated caption input with Enter-to-send support.
+    - Dual confirmation actions: `ارسال` (compress and send immediately) and `افزودن به پیام` (compress and attach to composer draft for further editing).
+  - Integrated into `ChatPage.jsx` and `MessageComposer.jsx` with file size and savings badges on pending media thumbnails.
+  - Comprehensive unit test suite in `client/test/utils/mediaCompressor.test.js` (405 client unit tests passing).
+
 ## 0.24.9 - 2026-11-07
 
 ### Fixed

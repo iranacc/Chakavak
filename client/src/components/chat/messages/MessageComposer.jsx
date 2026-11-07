@@ -32,6 +32,7 @@ import VerifiedBadge from "../../common/VerifiedBadge.jsx";
 import UserRoleBadge from "../../common/UserRoleBadge.jsx";
 import Tooltip from "../../common/Tooltip.jsx";
 import ScheduleMessageModal from "../../modals/ScheduleMessageModal.jsx";
+import { formatFileSize } from "../../../utils/mediaCompressor.js";
 
 function applyTextareaSize({
   textareaEl,
@@ -1060,6 +1061,11 @@ export function MessageComposer({
                   >
                     <Close size={11} className="icon-anim-pop" />
                   </button>
+                  {item.compressionPreset && item.compressionPreset !== "original" ? (
+                    <span className="absolute left-1 top-1 z-20 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                      {item.compressionPreset}
+                    </span>
+                  ) : null}
                   {isImage ? (
                     <div className="mb-1 flex h-24 items-center justify-center rounded-md">
                       <img
@@ -1095,9 +1101,21 @@ export function MessageComposer({
                       <File size={16} />
                     </div>
                   )}
-                  <p className="truncate pr-5 text-slate-700 dark:text-slate-200">
-                    {item.name}
-                  </p>
+                  <div className="flex items-center justify-between gap-1 text-[10px]">
+                    <p className="truncate text-slate-700 dark:text-slate-200">
+                      {item.name}
+                    </p>
+                    {item.sizeBytes ? (
+                      <span className="shrink-0 font-mono text-[9px] text-slate-500 dark:text-slate-400">
+                        {formatFileSize(item.sizeBytes)}
+                        {item.savingsPercent ? (
+                          <span className="mr-0.5 font-bold text-emerald-600 dark:text-emerald-400">
+                            (-{item.savingsPercent}%)
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
