@@ -813,17 +813,76 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     async (pollData) => {
       if (!activeChatId) return;
       try {
-        await createPoll({
+        const res = await createPoll({
           chatId: activeChatId,
           question: pollData.question,
           options: pollData.options,
           isAnonymous: Boolean(pollData.isAnonymous),
+          multipleChoice: Boolean(pollData.multipleChoice),
           allowsMultipleAnswers: Boolean(pollData.multipleChoice),
           isQuiz: Boolean(pollData.isQuiz),
           correctOptionIndex: pollData.correctOptionIndex,
         });
+        const data = await res?.json?.().catch(() => ({}));
+        if (data?.ok && data?.messageId && data?.poll) {
+          setMessages((prev) => {
+            const exists = prev.some((m) => (m._serverId || m.id) === data.messageId);
+            if (exists) {
+              return prev.map((m) =>
+                (m._serverId || m.id) === data.messageId ? { ...m, poll: data.poll } : m
+              );
+            }
+            return [
+              ...prev,
+              {
+                id: data.messageId,
+                _serverId: data.messageId,
+                chat_id: activeChatId,
+                user_id: user?.id,
+                username: user?.username,
+                nickname: user?.nickname,
+                body: pollData.question,
+                created_at: new Date().toISOString(),
+                poll: data.poll,
+                _timeLabel: formatTime(new Date()),
+                _readByMe: true,
+              },
+            ];
+          });
+        }
       } catch (err) {
         console.error("Failed to create poll:", err);
+      }
+    },
+    [activeChatId, user, formatTime],
+  );
+
+  const handleVotePoll = useCallback(
+    async (pollId, optionIndexes) => {
+      if (!activeChatId || !pollId) return;
+      try {
+        await votePoll({
+          chatId: activeChatId,
+          pollId,
+          optionIndexes,
+        });
+      } catch (err) {
+        console.error("Failed to vote poll:", err);
+      }
+    },
+    [activeChatId],
+  );
+
+  const handleClosePoll = useCallback(
+    async (pollId) => {
+      if (!activeChatId || !pollId) return;
+      try {
+        await closePoll({
+          chatId: activeChatId,
+          pollId,
+        });
+      } catch (err) {
+        console.error("Failed to close poll:", err);
       }
     },
     [activeChatId],
@@ -7657,6 +7716,8 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         editTarget={editTarget}
         onClearEdit={handleClearEdit}
         onReplyToMessage={handleStartReply}
+        onVotePoll={handleVotePoll}
+        onClosePoll={handleClosePoll}
         onOpenHeaderProfile={openActiveChatProfile}
         onOpenMessageSenderProfile={openMemberProfileFromMessage}
         onOpenMention={openMentionProfile}

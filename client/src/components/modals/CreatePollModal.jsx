@@ -54,16 +54,19 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
       <div
-        className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+        dir="rtl"
+        className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 font-fa"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5">
-          <h3 className="text-base font-bold">New Poll or Quiz</h3>
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            ایجاد نظرسنجی یا کوئیز
+          </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
             <X size={18} />
           </button>
@@ -72,23 +75,24 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           {/* Question Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
-              Question
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+              پرسش یا صورت سوال
             </label>
             <input
               type="text"
               required
+              autoFocus
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-hidden focus:border-emerald-500 focus:bg-white dark:border-white/10 dark:bg-slate-800 dark:focus:bg-slate-950"
+              placeholder="سوال خود را بنویسید..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-hidden focus:border-emerald-500 focus:bg-white dark:border-white/10 dark:bg-slate-800 dark:focus:bg-slate-950 transition"
             />
           </div>
 
           {/* Options Inputs */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
-              Options (2-10)
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+              گزینه‌ها (۲ تا ۱۰ مورد)
             </label>
             <div className="space-y-2">
               {options.map((opt, idx) => (
@@ -99,24 +103,25 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
                       name="correctOption"
                       checked={correctOptionIndex === idx}
                       onChange={() => setCorrectOptionIndex(idx)}
-                      title="Mark as correct answer"
-                      className="accent-emerald-600 h-4 w-4"
+                      title="انتخاب به عنوان پاسخ صحیح"
+                      className="accent-emerald-600 h-4 w-4 cursor-pointer"
                     />
                   ) : null}
                   <input
                     type="text"
                     value={opt}
                     onChange={(e) => handleOptionChange(idx, e.target.value)}
-                    placeholder={`Option ${idx + 1}`}
-                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs outline-hidden focus:border-emerald-500 focus:bg-white dark:border-white/10 dark:bg-slate-800 dark:focus:bg-slate-950"
+                    placeholder={`گزینه ${idx + 1}`}
+                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-hidden focus:border-emerald-500 focus:bg-white dark:border-white/10 dark:bg-slate-800 dark:focus:bg-slate-950 transition"
                   />
                   {options.length > 2 ? (
                     <button
                       type="button"
                       onClick={() => handleRemoveOption(idx)}
-                      className="text-slate-400 hover:text-rose-500 p-1"
+                      className="text-slate-400 hover:text-rose-500 p-1.5 transition cursor-pointer"
+                      title="حذف گزینه"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={15} />
                     </button>
                   ) : null}
                 </div>
@@ -127,10 +132,10 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
               <button
                 type="button"
                 onClick={handleAddOption}
-                className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 cursor-pointer"
               >
-                <Plus size={14} />
-                <span>Add option</span>
+                <Plus size={15} />
+                <span>افزودن گزینه</span>
               </button>
             ) : null}
           </div>
@@ -143,9 +148,9 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
                 checked={isAnonymous}
                 disabled={isQuiz}
                 onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="accent-emerald-600 rounded h-4 w-4"
+                className="accent-emerald-600 rounded h-4 w-4 cursor-pointer"
               />
-              <span>Anonymous voting</span>
+              <span>رأی‌گیری ناشناس (عدم نمایش نام رأی‌دهندگان)</span>
             </label>
 
             <label className="flex items-center gap-2.5 cursor-pointer">
@@ -154,9 +159,9 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
                 checked={multipleChoice}
                 disabled={isQuiz}
                 onChange={(e) => setMultipleChoice(e.target.checked)}
-                className="accent-emerald-600 rounded h-4 w-4"
+                className="accent-emerald-600 rounded h-4 w-4 cursor-pointer"
               />
-              <span>Multiple answers</span>
+              <span>امکان انتخاب چند گزینه همزمان</span>
             </label>
 
             <label className="flex items-center gap-2.5 cursor-pointer">
@@ -171,29 +176,29 @@ export function CreatePollModal({ open, onClose, onSubmit }) {
                     setMultipleChoice(false);
                   }
                 }}
-                className="accent-emerald-600 rounded h-4 w-4"
+                className="accent-emerald-600 rounded h-4 w-4 cursor-pointer"
               />
               <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                Quiz mode (has one correct answer)
+                حالت کوئیز (آزمون چهارگزینه‌ای با مشخص کردن جواب درست)
               </span>
             </label>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-3">
+          <div className="flex items-center justify-end gap-2.5 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition cursor-pointer"
             >
-              Cancel
+              انصراف
             </button>
             <button
               type="submit"
               disabled={!isValid}
-              className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 dark:bg-emerald-500 dark:text-slate-950"
+              className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 active:scale-95 disabled:opacity-50 transition cursor-pointer dark:bg-emerald-500 dark:text-slate-950"
             >
-              Create
+              ارسال نظرسنجی
             </button>
           </div>
         </form>

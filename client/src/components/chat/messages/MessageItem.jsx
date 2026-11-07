@@ -1324,7 +1324,7 @@ export const MessageItem = memo(function MessageItem({
                   <StickerCard sticker={specialMsg} isOwn={isOwn} />
                 ) : specialMsg?.type === "gif" ? (
                   <GifCard gif={specialMsg} isOwn={isOwn} />
-                ) : !shouldHideGeneratedFileBody ? (
+                ) : !shouldHideGeneratedFileBody && !msg.poll ? (
                   <div
                     ref={messageBodyRef}
                     dir="auto"
@@ -1549,7 +1549,7 @@ export const MessageItem = memo(function MessageItem({
                 <StickerCard sticker={specialMsg} isOwn={isOwn} />
               ) : specialMsg?.type === "gif" ? (
                 <GifCard gif={specialMsg} isOwn={isOwn} />
-              ) : !shouldHideGeneratedFileBody ? (
+              ) : !shouldHideGeneratedFileBody && !msg.poll ? (
                 <div
                   ref={messageBodyRef}
                   dir="auto"
@@ -1565,6 +1565,16 @@ export const MessageItem = memo(function MessageItem({
                 {firstDetectedUrl && !callLogLabel && (
                   <LinkPreviewCard url={firstDetectedUrl.url} isOwn={isOwn} />
                 )}
+                {msg.poll ? (
+                  <PollCard
+                    poll={msg.poll}
+                    isOwn={isOwn}
+                    currentUserId={user?.id}
+                    onVote={onVotePoll}
+                    onClosePoll={onClosePoll}
+                    canClose={isOwn || user?.role === "admin" || user?.role === "owner"}
+                  />
+                ) : null}
               {mentionDebugEnabled ? (
                 <div className="sb-mention-debug" aria-hidden="true">
                   @{mentionDebug?.active ?? 0}/{mentionDebug?.total ?? 0}

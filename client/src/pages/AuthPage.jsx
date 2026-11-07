@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "../icons/lucide.js";
+import { GithubIcon } from "../icons/BrandIcons.jsx";
 import chakavakLogo from "../assets/chakavak-logo.png";
 
 export default function AuthPage({
@@ -79,15 +80,27 @@ export default function AuthPage({
                 </div>
               </div>
 
-              {/* دکمه تم برای صفحات موبایل */}
-              <button
-                type="button"
-                onClick={onToggleTheme}
-                className="lg:hidden p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-500 transition shadow-xs cursor-pointer"
-                aria-label="تغییر تم"
-              >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
+              {/* دکمه‌های گیت‌هاب و تم برای صفحات موبایل */}
+              <div className="flex items-center gap-2 lg:hidden">
+                <a
+                  href="https://github.com/iranacc/Chakavak"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-500 transition shadow-xs inline-flex items-center justify-center"
+                  aria-label="GitHub Repository"
+                  title="مخزن گیت‌هاب چکاوک"
+                >
+                  <GithubIcon size={18} />
+                </a>
+                <button
+                  type="button"
+                  onClick={onToggleTheme}
+                  className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-500 transition shadow-xs cursor-pointer"
+                  aria-label="تغییر تم"
+                >
+                  {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              </div>
             </div>
 
             {/* نشان‌های مزایای کلیدی */}
@@ -181,18 +194,37 @@ export default function AuthPage({
             </div>
           </div>
 
-          {/* فوتر ویترین */}
+          {/* فوتر ویترین با لینک گیت‌هاب */}
           <div className="mt-6 pt-4 border-t border-slate-200/80 dark:border-white/10 hidden sm:flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-medium">
             <span>چکاوک؛ تجربه‌ای امن، روان و دلنشین از ارتباطات روزمره</span>
-            <span>بدون وابستگی به سرویس‌های بیگانه</span>
+            <a
+              href="https://github.com/iranacc/Chakavak"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition"
+              dir="ltr"
+            >
+              <GithubIcon size={16} />
+              <span className="font-mono text-[11px] font-semibold">github.com/iranacc/Chakavak</span>
+            </a>
           </div>
         </div>
 
         {/* ─── ستون چپ: فرم ورود و عضویت شیشه‌ای ─── */}
         <div className="w-full lg:w-5/12 xl:w-2/5 p-6 sm:p-8 lg:p-10 flex flex-col justify-center bg-white/95 dark:bg-slate-900/90 relative">
           
-          {/* دکمه تغییر تم در دسکتاپ */}
-          <div className="hidden lg:flex justify-end mb-2">
+          {/* دکمه‌های تغییر تم و گیت‌هاب در دسکتاپ */}
+          <div className="hidden lg:flex justify-end items-center gap-2 mb-2">
+            <a
+              href="https://github.com/iranacc/Chakavak"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-500 hover:border-emerald-500/30 transition shadow-xs cursor-pointer inline-flex items-center justify-center"
+              title="مخزن گیت‌هاب چکاوک"
+              aria-label="GitHub Repository"
+            >
+              <GithubIcon size={18} />
+            </a>
             <button
               type="button"
               onClick={onToggleTheme}

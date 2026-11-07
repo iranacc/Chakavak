@@ -1,3 +1,18 @@
+## 0.24.1 - 2026-11-07
+
+### Fixed
+- **Polls Display & Interactivity**:
+  - Fixed an issue where polls only rendered as plain text markdown messages when sent by the user, in DMs, or in channels by properly including `<PollCard>` in the primary message bubble branch in `MessageItem.jsx`.
+  - Suppressed duplicate raw markdown question text when a poll card is rendered.
+  - Connected `onVotePoll` and `onClosePoll` handlers from `ChatPage.jsx` down to `ChatWindowPanel` and `MessageItem`.
+  - Added optimistic instant state update upon poll creation for instantaneous feedback.
+  - Fully translated poll components and modal dialogs to Persian.
+
+### Enhanced
+- **Landing Page Polish**:
+  - Removed outdated mechanical copy from the showcase footer.
+  - Added direct official GitHub repository link and icon to both desktop and mobile header/footer navigation.
+
 ## 0.24.0 - 2026-11-07
 
 ### Added & Enhanced
