@@ -990,13 +990,21 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         rawVideo.style.left = "0px";
         rawVideo.style.width = "320px";
         rawVideo.style.height = "240px";
-        rawVideo.style.opacity = "0";
+        rawVideo.style.opacity = "0.01";
         rawVideo.style.pointerEvents = "none";
         rawVideo.style.zIndex = "-9999";
         document.body.appendChild(rawVideo);
         rawVideo.srcObject = new MediaStream([rawTrack]);
         await rawVideo.play().catch((err) => {
           console.warn("rawVideo play error:", err);
+        });
+        await new Promise((resolve) => {
+          if (rawVideo.readyState >= 2 && rawVideo.videoWidth > 0) {
+            resolve();
+          } else {
+            rawVideo.onloadedmetadata = () => resolve();
+            setTimeout(resolve, 500);
+          }
         });
         rawVideoElementRef.current = rawVideo;
       }

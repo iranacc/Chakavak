@@ -1,3 +1,11 @@
+## 0.24.8 - 2026-11-07
+
+### Fixed
+- **MediaPipe Video Background Blur Root Cause Resolution**:
+  - Identified and resolved native WebAssembly C++ abort crash in MediaPipe SelfieSegmentation: `selfie_segmentation.binarypb` calculator graph hardcodes the general model path `third_party/mediapipe/modules/selfie_segmentation/selfie_segmentation.tflite` in Emscripten MEMFS. Setting `modelSelection: 1` caused MediaPipe to only download the landscape file, triggering a fatal C++ `Calculator::Open() failed` and `abort()` on the first inference pass.
+  - Aligned model configuration to `modelSelection: 0` in `client/src/utils/videoBackground.js`, ensuring the general model binary is preloaded into virtual filesystem and cleanly initialized with WebGL acceleration without aborting.
+  - Fixed Chromium video frame decoder throttling by adjusting offscreen camera source video element from `opacity: 0` to `opacity: 0.01` and awaiting stream metadata resolution before starting canvas segmentation pipeline.
+
 ## 0.24.7 - 2026-11-07
 
 ### Added

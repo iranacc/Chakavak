@@ -32,7 +32,7 @@ export async function getSelfieSegmenter() {
         locateFile: (file) => `/mediapipe/${file}`,
       });
       segmenter.setOptions({
-        modelSelection: 1, // 1 for landscape (ultra-fast 144x256 for realtime video calls)
+        modelSelection: 0, // 0 for general model (selfie_segmentation.tflite) matching binarypb
         selfieMode: false, // Keep original camera orientation
       });
       await segmenter.initialize();
