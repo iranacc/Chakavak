@@ -51,7 +51,7 @@
    - **تماس نقطه به نقطه WebRTC (P2P Call)**: کنترل‌های دو سطحی و کامپکت بهینه‌شده برای موبایل و دسکتاپ در [`CallScreen.jsx`](client/src/components/call/CallScreen.jsx) و هوک [`useWebRTCCall.js`](client/src/hooks/chat/useWebRTCCall.js).
    - **مسیریابی و رله صوتی/تصویری (TURN/STUN Relay)**: پیکربندی Coturn با استخر STUN چندگانه، ایجاد اتوماتیک اکانت کاربر در دیتابیس Coturn (`turnadmin`)، بازیابی امن و منعطف کاندیداهای ICE و پردازش امن `ontrack` چندترکه.
    - **پخش مستقل و پایدار صدا**: تفکیک کامل تگ پخش صدا (`<audio>`) از عناصر نمایش تصویر برای عبور تضمینی از Autoplay Policy مرورگرها و حذف قطعی صدا هنگام سوئیچ وضعیت (PiP / Swap).
-   - **تار کردن و جلوه‌های پس‌زمینه ویدیو (MediaPipe Background Blur)**: پیاده‌سازی شده در [`client/src/utils/videoBackground.js`](client/src/utils/videoBackground.js) با استفاده از مدل آفلاین سلف‌هاست‌شده در `client/public/mediapipe/selfie_segmentation.js`.
+   - **تار کردن و جلوه‌های پس‌زمینه ویدیو (MediaPipe Background Blur)**: پیاده‌سازی شده در [`client/src/utils/videoBackground.js`](client/src/utils/videoBackground.js) با استفاده از مدل آفلاین سلف‌هاست‌شده در `client/public/mediapipe/selfie_segmentation.js`، پایپ‌لاین ترکیبی استنسیل ماسک (`source-in` و `destination-over`) و اتصال مجدد داینامیک `MediaStream` در [`useWebRTCCall.js`](client/src/hooks/chat/useWebRTCCall.js).
    - **کنفرانس ویدیویی گروهی (SFU)**: ماژول لایوکیت در [`GroupConferenceModal.jsx`](client/src/components/call/GroupConferenceModal.jsx).
 
 7. **ارتباط بلادرنگ و اعلان‌ها (Real-Time & Notifications)**:
