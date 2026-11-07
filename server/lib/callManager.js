@@ -21,6 +21,21 @@ export function createCallManager(deps) {
 
   // chatId (UUID) -> { chatId, callerId, callerUsername, calleeId, calleeUsername, type, startedAt, status }
   const activeCalls = new Map();
+  const ringingTimers = new Map();
+  const durationTimers = new Map();
+
+  function clearCallTimers(key) {
+    const r = ringingTimers.get(key);
+    if (r) {
+      clearTimeout(r);
+      ringingTimers.delete(key);
+    }
+    const d = durationTimers.get(key);
+    if (d) {
+      clearTimeout(d);
+      durationTimers.delete(key);
+    }
+  }
 
   const TURN_STUN_URL = env.TURN_STUN_URL || "stun:stun.l.google.com:19302";
   const TURN_URL = env.TURN_URL || "";
@@ -28,17 +43,10 @@ export function createCallManager(deps) {
   const TURN_CREDENTIAL = env.TURN_CREDENTIAL || "";
 
   function getIceServers() {
-    const stunList = [
-      TURN_STUN_URL,
-      "stun:stun.l.google.com:19302",
-      "stun:stun1.l.google.com:19302",
-      "stun:stun2.l.google.com:19302",
-    ].filter(Boolean);
-    const uniqueStun = Array.from(new Set(stunList));
-    const servers = [{ urls: uniqueStun }];
+    const servers = [{ urls: TURN_STUN_URL }];
     if (TURN_URL) {
-      const urls = TURN_URL.includes(',')
-        ? TURN_URL.split(',').map((u) => u.trim()).filter(Boolean)
+      const urls = TURN_URL.includes(",")
+        ? TURN_URL.split(",").map((u) => u.trim()).filter(Boolean)
         : TURN_URL;
       servers.push({
         urls,
@@ -205,8 +213,18 @@ export function createCallManager(deps) {
     }
 
     const key = normalizedChatId.toLowerCase();
-    if (activeCalls.has(key)) {
-      return { status: 409, error: "Call already in progress in this chat" };
+    const existingCall = activeCalls.get(key);
+    if (existingCall) {
+      const isStale = Date.now() - (existingCall.startedAt || 0) > 45000;
+      if (isStale) {
+        if (existingCall.ringingTimer) clearTimeout(existingCall.ringingTimer);
+        if (existingCall.maxDurationTimer) clearTimeout(existingCall.maxDurationTimer);
+        activeCalls.delete(key);
+        dismissCallPush(existingCall);
+        void writeCallLog(existingCall, "cancelled");
+      } else {
+        return { status: 409, error: "Call already in progress in this chat" };
+      }
     }
 
     const members =
@@ -240,6 +258,25 @@ export function createCallManager(deps) {
       startedAt: Date.now(),
       status: "ringing",
     };
+
+    const RINGING_TIMEOUT_MS = 45000;
+    const rTimer = setTimeout(() => {
+      if (activeCalls.get(key) !== call) return;
+      clearCallTimers(key);
+      activeCalls.delete(key);
+      dismissCallPush(call);
+      for (const peer of [call.callerUsername, call.calleeUsername]) {
+        if (typeof emitToUser === "function" && peer) {
+          emitToUser(peer, {
+            type: "call:ended",
+            chatId: call.chatId,
+            reason: "no-answer",
+          });
+        }
+      }
+      void writeCallLog(call, "failed");
+    }, RINGING_TIMEOUT_MS);
+    ringingTimers.set(key, rTimer);
 
     activeCalls.set(key, call);
 
@@ -322,15 +359,21 @@ export function createCallManager(deps) {
       return { status: 403, error: "Only the recipient can accept the call" };
     }
 
+    const rTimer = ringingTimers.get(key);
+    if (rTimer) {
+      clearTimeout(rTimer);
+      ringingTimers.delete(key);
+    }
+
     dismissCallPush(call);
 
     call.status = "connected";
 
     if (MAX_CALL_DURATION_MS > 0) {
-      const key = String(chatId || "").toLowerCase();
-      call.maxDurationTimer = setTimeout(() => {
+      const dTimer = setTimeout(() => {
         // Stale timer after a manual end/other removal: no-op.
         if (activeCalls.get(key) !== call) return;
+        clearCallTimers(key);
         activeCalls.delete(key);
         dismissCallPush(call);
         for (const peer of [call.callerUsername, call.calleeUsername]) {
@@ -343,6 +386,7 @@ export function createCallManager(deps) {
         }
         void writeCallLog(call, "connected", secondsSinceStart(call));
       }, MAX_CALL_DURATION_MS);
+      durationTimers.set(key, dTimer);
     }
 
     if (typeof emitToUser === "function") {
@@ -369,6 +413,7 @@ export function createCallManager(deps) {
       return { status: 403, error: "You are not a participant in this call" };
     }
 
+    clearCallTimers(key);
     activeCalls.delete(key);
 
     dismissCallPush(call);
@@ -413,7 +458,7 @@ export function createCallManager(deps) {
       String(user.username).toLowerCase() ===
       String(call.callerUsername).toLowerCase();
 
-    if (call.maxDurationTimer) clearTimeout(call.maxDurationTimer);
+    clearCallTimers(key);
     activeCalls.delete(key);
 
     dismissCallPush(call);
@@ -475,7 +520,7 @@ export function createCallManager(deps) {
         String(call.callerUsername).toLowerCase() === lower ||
         String(call.calleeUsername).toLowerCase() === lower
       ) {
-        if (call.maxDurationTimer) clearTimeout(call.maxDurationTimer);
+        clearCallTimers(key);
         activeCalls.delete(key);
 
         dismissCallPush(call);

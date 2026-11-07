@@ -80,6 +80,7 @@ import {
 } from "../utils/e2eeManager.js";
 import {
   createDmChat,
+  fetchIncomingCall,
   fetchActiveVoiceStages,
   fetchChatVoiceStage,
   startVoiceStage,
@@ -2018,6 +2019,35 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       document.title = originalTitle;
     };
   }, [callState]);
+
+  // Proactively check for still-ringing incoming calls on mount, SSE connect, or tab focus
+  useEffect(() => {
+    if (!user || callState !== "idle") return;
+    let cancelled = false;
+
+    const probeIncoming = async () => {
+      try {
+        const res = await fetchIncomingCall();
+        if (!cancelled && res?.call && callState === "idle") {
+          handleCallSignal(res.call);
+        }
+      } catch (_) {}
+    };
+
+    void probeIncoming();
+
+    const handleFocus = () => {
+      if (callState === "idle") {
+        void probeIncoming();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [user, sseConnected, callState, handleCallSignal]);
 
   const getNetworkBackoffMultiplier = () => {
     if (typeof navigator === "undefined") return 1;

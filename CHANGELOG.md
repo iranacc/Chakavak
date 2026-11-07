@@ -1,3 +1,12 @@
+## 0.24.5 - 2026-11-07
+
+### Fixed
+- **WebRTC Call Ringing Timers & Stale Call Auto-Recovery**:
+  - Added 45-second automatic timeout for ringing calls in `callManager.js`: unanswered calls gracefully auto-terminate and record a failed/missed call log instead of remaining in memory indefinitely.
+  - Resolved 409 Conflict deadlock in `callManager.js`: if a call attempt encounters a stale ringing call (older than 45 seconds or abandoned), it automatically clears the previous call rather than rejecting new calls.
+  - Decoupled Node.js `Timeout` objects from serializable `call` objects into isolated Maps (`ringingTimers`, `durationTimers`) to prevent circular JSON serialization crashes on `/api/calls/start` and `/api/calls/accept`.
+  - Added proactive incoming call discovery in `ChatPage.jsx`: the client automatically probes `/api/calls/incoming` on mount, SSE connection, and tab focus so incoming calls immediately pop up the answer screen even across reconnects or background tab restorations.
+
 ## 0.24.4 - 2026-11-07
 
 ### Fixed
