@@ -2004,6 +2004,21 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     }
   }, [chats]);
 
+  // Flash title on incoming ringing call
+  useEffect(() => {
+    if (callState !== "ringing") return;
+    const originalTitle = document.title;
+    let isToggled = false;
+    const interval = setInterval(() => {
+      isToggled = !isToggled;
+      document.title = isToggled ? "📞 تماس ورودی..." : "🔔 چکاوک | تماس ورودی";
+    }, 1000);
+    return () => {
+      clearInterval(interval);
+      document.title = originalTitle;
+    };
+  }, [callState]);
+
   const getNetworkBackoffMultiplier = () => {
     if (typeof navigator === "undefined") return 1;
     const connection =
@@ -4241,7 +4256,27 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     onSessionRevoked: () => {
       handleLogout();
     },
-    onCallSignal: handleCallSignal,
+    onCallSignal: (payload) => {
+      handleCallSignal(payload);
+      if (payload?.type === "call:incoming") {
+        const callerName = payload.caller?.nickname || payload.caller?.username || "مخاطب";
+        const isVideo = payload.callType === "video";
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          try {
+            const notif = new Notification(isVideo ? "تماس تصویری ورودی" : "تماس صوتی ورودی", {
+              body: `${callerName} در حال تماس با شماست...`,
+              icon: payload.caller?.avatarUrl || "/icons/icon-192.png",
+              tag: `call-${payload.chatId || "incoming"}`,
+              renotify: true,
+            });
+            notif.onclick = () => {
+              window.focus();
+              try { notif.close(); } catch (_) {}
+            };
+          } catch (_) {}
+        }
+      }
+    },
     onVoiceStageEvent: (payload) => {
       if (payload.type === "voice_stage_started" || payload.type === "voice_stage_updated") {
         setActiveVoiceStages((prev) => ({ ...prev, [payload.chatId]: payload.stage }));

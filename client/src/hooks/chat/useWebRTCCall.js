@@ -602,6 +602,12 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     const chatId = callChatIdRef.current;
     if (!chatId) return;
 
+    if (!isCallSupported()) {
+      finishCall("unsupported");
+      void postSignal("reject", { chatId, reason: "unsupported" });
+      return;
+    }
+
     try {
       await ensureIceServers();
       const acceptedType = callTypeRef.current;
@@ -1045,15 +1051,6 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
 
       switch (payload.type) {
         case "call:incoming": {
-          // If this client does not support WebRTC / is on insecure HTTP, auto-reject without showing modal
-          if (!isCallSupported()) {
-            void postSignal("reject", {
-              chatId: payload.chatId,
-              reason: "unsupported",
-            });
-            return;
-          }
-
           // Busy: reject second call if already active
           if (callStateRef.current !== "idle") {
             void postSignal("reject", { chatId: payload.chatId });

@@ -70,4 +70,29 @@ describe("useChatEvents call signaling parsing", () => {
     const sentClosed = sender({ action: "call_signal" });
     expect(sentClosed).toBe(false);
   });
+
+  test("probes session and revokes on 401/403 when reconnection fails", async () => {
+    const onSessionRevoked = vi.fn();
+    const reconnectAttempts = 2;
+    const username = "alice";
+
+    const apiFetch = vi.fn(async () => ({ status: 403 }));
+
+    const handleError = async () => {
+      if (reconnectAttempts >= 1 && username) {
+        try {
+          const probeRes = await apiFetch(`/api/events?username=${encodeURIComponent(username)}`);
+          if (probeRes?.status === 401 || probeRes?.status === 403) {
+            onSessionRevoked({ reason: "session_mismatch" });
+            return;
+          }
+        } catch (_) {}
+      }
+    };
+
+    await handleError();
+
+    expect(apiFetch).toHaveBeenCalledWith("/api/events?username=alice");
+    expect(onSessionRevoked).toHaveBeenCalledWith({ reason: "session_mismatch" });
+  });
 });

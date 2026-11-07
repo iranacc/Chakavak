@@ -1,3 +1,13 @@
+## 0.24.4 - 2026-11-07
+
+### Fixed
+- **WebRTC Call Signaling, Incoming Ringing & Session Desynchronization**:
+  - Resolved premature auto-rejection of incoming calls in `useWebRTCCall.js`: removed immediate auto-reject on `call:incoming` when media devices are uninitialized, moving capability enforcement to `acceptCall` so users always see caller identity and incoming call screens.
+  - Added browser Autoplay Policy resilience in `CallScreen.jsx`: attached one-time pointer and keyboard interaction listeners to immediately start playback if the browser blocks initial background ringtone autoplay.
+  - Added physical device vibration using the Vibration API (`navigator.vibrate`) during incoming calls on supported mobile devices.
+  - Added desktop browser notifications (`Notification`) and blinking document title alerts (`📞 تماس ورودی...`) for background tabs when an incoming call arrives.
+  - Resolved session cookie desynchronization in `useChatEvents.js`: added proactive session probing on connection failures to detect HTTP 401/403 session user mismatches (preventing deadlocks when multiple user accounts are switched or tested across browser tabs).
+
 ## 0.24.3 - 2026-11-07
 
 ### Fixed

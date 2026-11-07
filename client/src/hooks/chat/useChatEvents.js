@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getWebSocketUrl } from "../../api/chatApi.js";
+import { getWebSocketUrl, apiFetch, API_BASE } from "../../api/chatApi.js";
 import {
   isMessageAuthoredByUser,
   isRemoteChannelMessage,
@@ -602,13 +602,25 @@ export function useChatEvents({
         }
       };
 
-      const handleError = () => {
+      const handleError = async () => {
         setSseConnected(false);
         if (source instanceof WebSocket && !wsOpened) {
           useWebSocket = false;
         }
         try { source?.close(); } catch (_) {}
         if (!isMounted) return;
+
+        // When connection fails after an attempt, check if the session cookie expired or changed user
+        if (reconnectAttempts >= 1 && username) {
+          try {
+            const probeRes = await apiFetch(`${API_BASE}/api/events?username=${encodeURIComponent(username)}`);
+            if (probeRes?.status === 401 || probeRes?.status === 403) {
+              onSessionRevokedRef.current?.({ reason: "session_mismatch" });
+              return;
+            }
+          } catch (_) {}
+        }
+
         if (sseReconnectRef.current) {
           clearTimeout(sseReconnectRef.current);
         }

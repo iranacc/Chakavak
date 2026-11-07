@@ -1,6 +1,6 @@
 import { extractMediaPreprocessMetadata } from "../utils/mediaPreprocess.js";
 
-const API_BASE = "";
+export const API_BASE = "";
 
 const withCredentials = (options = {}) => ({
   credentials: "include",

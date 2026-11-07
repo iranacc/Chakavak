@@ -184,9 +184,11 @@ export const CallScreen = memo(function CallScreen({
   const endLabel =
     callEndReason === "declined"
       ? "Call declined"
-      : callEndReason === "failed"
-        ? "Call failed"
-        : "Call ended";
+      : callEndReason === "unsupported"
+        ? "Calls unsupported on device"
+        : callEndReason === "failed"
+          ? "Call failed"
+          : "Call ended";
 
   // Reset minimized state and dragged position if call disconnects
   useEffect(() => {
@@ -415,19 +417,49 @@ export const CallScreen = memo(function CallScreen({
 
   const ringtoneRef = useRef(null);
 
-  // Play ringtone while calling / ringing, stop on connected / ending / unmount
+  // Play ringtone and vibrate while calling / ringing, stop on connected / ending / unmount
   useEffect(() => {
     if (isEnding || (callState !== "calling" && callState !== "ringing")) {
       ringtoneRef.current?.pause();
       ringtoneRef.current = null;
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try { navigator.vibrate(0); } catch (_) {}
+      }
       return;
     }
     const audio = new Audio("/sounds/ringtone.mp3");
     audio.loop = true;
     ringtoneRef.current = audio;
-    void audio.play().catch(() => {});
+
+    // Start playback and attach fallback gesture listeners if blocked by browser Autoplay policy
+    audio.play().catch(() => {});
+
+    const onUserInteraction = () => {
+      audio.play().catch(() => {});
+      window.removeEventListener("pointerdown", onUserInteraction);
+      window.removeEventListener("keydown", onUserInteraction);
+    };
+    window.addEventListener("pointerdown", onUserInteraction, { once: true });
+    window.addEventListener("keydown", onUserInteraction, { once: true });
+
+    let vibrateTimer = null;
+    if (callState === "ringing" && typeof navigator !== "undefined" && "vibrate" in navigator) {
+      try {
+        navigator.vibrate([500, 250, 500, 250, 500, 250, 1000]);
+        vibrateTimer = setInterval(() => {
+          try { navigator.vibrate([500, 250, 500, 250, 500, 250, 1000]); } catch (_) {}
+        }, 3500);
+      } catch (_) {}
+    }
+
     return () => {
       audio.pause();
+      window.removeEventListener("pointerdown", onUserInteraction);
+      window.removeEventListener("keydown", onUserInteraction);
+      if (vibrateTimer) clearInterval(vibrateTimer);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try { navigator.vibrate(0); } catch (_) {}
+      }
       if (ringtoneRef.current === audio) ringtoneRef.current = null;
     };
   }, [callState, isEnding]);
