@@ -923,7 +923,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
   const setVirtualBackground = useCallback(async (effect, customImage = null) => {
     const pc = peerConnectionRef.current;
     const stream = localStreamRef.current;
-    if (!pc || !stream) return;
+    if (!stream) return;
 
     let rawTrack = rawCameraTrackRef.current;
     if (!rawTrack || rawTrack.readyState === "ended") {
@@ -948,9 +948,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       }
 
       if (rawTrack && rawTrack.readyState !== "ended") {
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-        if (sender) {
-          await sender.replaceTrack(rawTrack);
+        if (pc) {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+          if (sender) {
+            await sender.replaceTrack(rawTrack);
+          }
         }
         const restoredStream = new MediaStream([rawTrack, ...stream.getAudioTracks()]);
         localStreamRef.current = restoredStream;
@@ -988,11 +990,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         rawVideo.style.position = "fixed";
         rawVideo.style.top = "0px";
         rawVideo.style.left = "0px";
-        rawVideo.style.width = "320px";
-        rawVideo.style.height = "240px";
+        rawVideo.style.width = "4px";
+        rawVideo.style.height = "4px";
         rawVideo.style.opacity = "0.01";
         rawVideo.style.pointerEvents = "none";
-        rawVideo.style.zIndex = "-9999";
+        rawVideo.style.zIndex = "9999";
         document.body.appendChild(rawVideo);
         rawVideo.srcObject = new MediaStream([rawTrack]);
         await rawVideo.play().catch((err) => {
@@ -1039,9 +1041,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         stream.addTrack(processedTrack);
       }
 
-      const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-      if (sender) {
-        await sender.replaceTrack(processedTrack);
+      if (pc) {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(processedTrack);
+        }
       }
 
       // Re-create stream wrapper so all HTML5 video elements bind to the new processed track immediately!

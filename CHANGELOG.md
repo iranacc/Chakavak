@@ -1,3 +1,14 @@
+## 0.24.9 - 2026-11-07
+
+### Fixed
+- **Google Meet-Grade WebRTC Virtual Background & Optical Bokeh Architecture**:
+  - Re-architected video background blur to emulate Google Meet & LiveKit production standards: eliminated fragile single-canvas CSS `ctx.filter` which failed on mobile Android GPU compositors.
+  - Implemented dual-canvas optical bokeh downscale/upscale blur: downscales background to an offscreen buffer with bilinear high-quality interpolation, guaranteeing smooth, hardware-accelerated lens blur across all mobile and desktop devices without CPU degradation.
+  - Added dedicated offscreen person stencil canvas with feathered alpha blending, cleanly stamping the sharp person over the blurred room.
+  - Implemented frame synchronization via `requestVideoFrameCallback` with `requestAnimationFrame` fallback, synchronizing frame processing directly with camera hardware presentation.
+  - Prevented Android WebView background occluding/throttling by switching camera feeder element to positive z-index and safe dimensioning.
+  - Removed strict `peerConnection` guard in `setVirtualBackground` so virtual background preview can be initialized seamlessly at any point in call setup.
+
 ## 0.24.8 - 2026-11-07
 
 ### Fixed
