@@ -772,6 +772,27 @@ export const CallScreen = memo(function CallScreen({
                 <span>🌫️</span>
                 <span>مات شدید (Deep Blur)</span>
               </button>
+              {[
+                { id: "scene-office", icon: "🏢", label: "دفتر کار" },
+                { id: "scene-living-room", icon: "🛋️", label: "اتاق نشیمن" },
+                { id: "scene-library", icon: "📚", label: "کتابخانه" },
+                { id: "scene-nature", icon: "🌿", label: "طبیعت" },
+              ].map((scene) => (
+                <button
+                  key={scene.id}
+                  type="button"
+                  onClick={async () => {
+                    const ok = await onSetVirtualBackground(scene.id);
+                    if (ok !== false) setBgMenuOpen(false);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
+                    backgroundEffect === scene.id ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
+                  }`}
+                >
+                  <span>{scene.icon}</span>
+                  <span>{scene.label}</span>
+                </button>
+              ))}
               {backgroundError ? (
                 <p role="alert" className="px-3 pt-1 text-[11px] leading-5 text-rose-300">{backgroundError}</p>
               ) : null}

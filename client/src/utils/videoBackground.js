@@ -48,6 +48,28 @@ export async function getSelfieSegmenter() {
   return segmenterLoadingPromise;
 }
 
+/** Built-in scene backgrounds: effect id → image URL in `client/public/backgrounds`. */
+export const BACKGROUND_SCENE_SRC = {
+  "scene-office": "/backgrounds/office.svg",
+  "scene-living-room": "/backgrounds/living-room.svg",
+  "scene-library": "/backgrounds/library.svg",
+  "scene-nature": "/backgrounds/nature.svg",
+};
+
+/**
+ * Loads a background image for the pipeline. Rejects if the image cannot be decoded.
+ * @param {string} src
+ * @returns {Promise<HTMLImageElement>}
+ */
+export function loadBackgroundImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load background: ${src}`));
+    img.src = src;
+  });
+}
+
 /**
  * Creates a processed MediaStreamTrack from a raw camera video stream.
  * Emulates Google Meet's real-time video background blur architecture:

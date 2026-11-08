@@ -922,6 +922,19 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
   }, [isScreenSharing, postSignal]);
 
   const setVirtualBackground = useCallback(async (effect, customImage = null) => {
+    const { BACKGROUND_SCENE_SRC, loadBackgroundImage } = await import("../../utils/videoBackground.js");
+    const sceneSrc = BACKGROUND_SCENE_SRC[effect];
+    const selectedEffect = effect;
+    if (sceneSrc) {
+      try {
+        customImage = await loadBackgroundImage(sceneSrc);
+      } catch (err) {
+        console.warn("Failed to load background scene:", err);
+        setBackgroundError("بارگذاری تصویر پس‌زمینه ناموفق بود. لطفاً دوباره تلاش کنید.");
+        return false;
+      }
+    }
+    const pipelineEffect = sceneSrc ? "image" : effect;
     const pc = peerConnectionRef.current;
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -1019,11 +1032,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       if (!bgPipelineRef.current) {
         bgPipelineRef.current = createVirtualBackgroundPipeline(
           rawVideoElementRef.current,
-          effect,
+          pipelineEffect,
           customImage
         );
       } else {
-        bgPipelineRef.current.setEffect(effect, customImage);
+        bgPipelineRef.current.setEffect(pipelineEffect, customImage);
       }
 
       const [processedTrack] = bgPipelineRef.current.outputStream.getVideoTracks();
@@ -1067,7 +1080,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
           v.play?.().catch(() => {});
         });
       }
-      setBackgroundEffect(effect);
+      setBackgroundEffect(selectedEffect);
       return true;
     } catch (err) {
       console.warn("Failed to apply virtual background:", err);
