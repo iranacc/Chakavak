@@ -10,6 +10,10 @@
   - Retained backward-compatible SVG wrappers for cached assets and updated asset loaders in `client/src/utils/videoBackground.js`.
 
 ### Fixed
+- **Duplicate Chat Tabs Removal & Creation Menu Clipping Fix (حذف سطر تب تکراری و رفع بریدگی منوی ساخت گفتگو)**:
+  - Eliminated the redundant internal category tab bar in `ChatsListPanel.jsx` that was conflicting with `ChatFolderTabs.jsx` and causing duplicate rows and confusing empty states.
+  - Unified chat folder filtering with support for archived chats in `ChatFolderTabs.jsx` and `useActiveChatState.js`.
+  - Fixed z-index layering on `SidebarHeader.jsx` wrapper in `ChatSidebar.jsx` (`z-30`) and creation dropdown menu (`z-50`), ensuring "New channel" and all menu options float smoothly above the chat list and never get clipped.
 - **Dynamic Version Badge on Landing / Auth Page (نمایش پویا و خودکار نسخه برنامه در صفحه ورود)**:
   - Replaced the hardcoded `v0.24.0` badge on `AuthPage.jsx` with dynamic runtime resolution.
   - Injected `__APP_VERSION__` at build time in `client/vite.config.js` and `client/src/settings/appConfig.js`.

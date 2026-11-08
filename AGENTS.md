@@ -31,7 +31,7 @@
    - **رابط کاربری کلاینت**: کامپوننت [`LinkPreviewCard.jsx`](client/src/components/chat/messages/LinkPreviewCard.jsx) متصل به حباب‌های پیام در [`MessageItem.jsx`](client/src/components/chat/messages/MessageItem.jsx) با کش کلاینت، تصویر شاخص بهینه، عنوان، خلاصه و نام سایت مبدأ.
 
 3. **پوشه‌بندی و تب‌بندی گفتگوها (Chat Folders)**:
-   - **رابط کاربری**: نوار تب‌های فیلتر پوشه‌ها در [`ChatFolderTabs.jsx`](client/src/components/sidebar/list/ChatFolderTabs.jsx) با دسته‌های: همه (`all`)، گفتگوهای شخصی (`personal`)، گروه‌ها (`groups`) و کانال‌ها (`channels`).
+   - **رابط کاربری**: نوار تب‌های فیلتر پوشه‌ها در [`ChatFolderTabs.jsx`](client/src/components/sidebar/list/ChatFolderTabs.jsx) با دسته‌های: همه (`all`)، گفتگوهای شخصی (`personal`)، گروه‌ها (`groups`) و کانال‌ها (`channels`) و پوشه آرشیو (`archived`).
    - **شمارشگر پیام‌های خوانده‌نشده**: بج (Badge) هوشمند تعداد پیام‌های ناخوانده مجزا به ازای هر پوشه.
    - **پایداری وضعیت (Persistence)**: ذخیره‌سازی پوشه انتخاب‌شده کاربر در `localStorage` و ادغام روان با نوار فیلتر و جستجوی پیشرفته در [`ChatSidebar.jsx`](client/src/components/sidebar/layout/ChatSidebar.jsx) و [`useActiveChatState.js`](client/src/hooks/chat/useActiveChatState.js).
 

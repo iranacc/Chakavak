@@ -197,7 +197,7 @@ export default function ChatSidebar({
         (mobileTab === "chat" ? "hidden md:block" : "block")
       }
     >
-      <div className={mobileTab === "settings" ? "hidden" : ""}>
+      <div className={`relative z-30 shrink-0 ${mobileTab === "settings" ? "hidden" : ""}`}>
         <SidebarHeader
           mobileTab={mobileTab}
           editMode={mobileTab === "calls" ? callsEditMode : editMode}
@@ -338,6 +338,7 @@ export default function ChatSidebar({
               currentFolder={chatFolder}
               onSelectFolder={onSelectChatFolder}
               counts={folderUnreadCounts}
+              hasArchived={Array.isArray(archivedChatIds) && archivedChatIds.length > 0}
             />
           ) : null}
           <div

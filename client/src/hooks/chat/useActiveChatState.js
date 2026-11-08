@@ -9,6 +9,7 @@ export function useActiveChatState({
   activeChatTypeRef,
   activePeer,
   chatFolder = 'all',
+  archivedChatIds = [],
 }) {
   const activeId = activeChatId || null;
   useEffect(() => {
@@ -19,15 +20,22 @@ export function useActiveChatState({
     const query = String(chatsSearchQuery || "")
       .trim()
       .toLowerCase();
-    let list = chats;
-    if (chatFolder && chatFolder !== "all") {
-      list = list.filter((chat) => {
-        const type = String(chat?.type || "").toLowerCase();
-        if (chatFolder === "personal") return type === "dm" || type === "saved" || type === "secret";
-        if (chatFolder === "groups") return type === "group";
-        if (chatFolder === "channels") return type === "channel";
-        return true;
-      });
+    let list = Array.isArray(chats) ? chats : [];
+    if (chatFolder === "archived") {
+      list = list.filter((chat) => (archivedChatIds || []).includes(chat?.id));
+    } else {
+      if (Array.isArray(archivedChatIds) && archivedChatIds.length > 0) {
+        list = list.filter((chat) => !archivedChatIds.includes(chat?.id));
+      }
+      if (chatFolder && chatFolder !== "all") {
+        list = list.filter((chat) => {
+          const type = String(chat?.type || "").toLowerCase();
+          if (chatFolder === "personal") return type === "dm" || type === "saved" || type === "secret";
+          if (chatFolder === "groups") return type === "group";
+          if (chatFolder === "channels") return type === "channel";
+          return true;
+        });
+      }
     }
 
     if (!query) return list;
@@ -52,7 +60,7 @@ export function useActiveChatState({
       const username = String(other?.username || "").toLowerCase();
       return nickname.includes(query) || username.includes(query);
     });
-  }, [chats, chatsSearchQuery, chatFolder, user?.username]);
+  }, [chats, chatsSearchQuery, chatFolder, archivedChatIds, user?.username]);
 
   const activeChat =
     visibleChats.find((conv) => conv.id === activeId) ||

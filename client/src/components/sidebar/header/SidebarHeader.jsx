@@ -247,7 +247,7 @@ export default function SidebarHeader({
                     <Plus size={18} className="icon-anim-pop" />
                   </button>
                   {showCreateMenu ? (
-                    <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-2xl border border-emerald-200 bg-white p-1 text-sm font-semibold text-slate-700 shadow-xl shadow-emerald-950/10 dark:border-emerald-500/30 dark:bg-slate-900 dark:text-slate-100">
+                    <div className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-2xl border border-emerald-200 bg-white p-1 text-sm font-semibold text-slate-700 shadow-2xl shadow-emerald-950/20 dark:border-emerald-500/30 dark:bg-slate-900 dark:text-slate-100">
                       <button
                         type="button"
                         onClick={() => {

@@ -90,7 +90,7 @@ export default function UserMenuButton({
         <div
           role="menu"
           aria-label="User menu options"
-          className="absolute top-full left-0 mt-3 z-30 w-72 max-w-[90vw] overflow-hidden rounded-2xl border border-emerald-200 bg-white p-1 text-sm font-semibold text-slate-700 shadow-xl shadow-emerald-950/10 dark:border-emerald-500/30 dark:bg-slate-900 dark:text-slate-100"
+          className="absolute top-full left-0 mt-3 z-50 w-72 max-w-[90vw] overflow-hidden rounded-2xl border border-emerald-200 bg-white p-1 text-sm font-semibold text-slate-700 shadow-2xl shadow-emerald-950/20 dark:border-emerald-500/30 dark:bg-slate-900 dark:text-slate-100"
         >
           {/* User header: avatar + nickname + status */}
           <button

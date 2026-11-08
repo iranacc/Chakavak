@@ -800,10 +800,15 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
   }, []);
 
   const folderUnreadCounts = useMemo(() => {
-    const counts = { all: 0, personal: 0, groups: 0, channels: 0 };
+    const counts = { all: 0, personal: 0, groups: 0, channels: 0, archived: 0 };
     if (!Array.isArray(chats)) return counts;
+    const isArchived = (id) => Array.isArray(archivedChatIds) && archivedChatIds.includes(id);
     chats.forEach((chat) => {
       const unread = Number(chat.unread_count || chat.unreadCount || 0);
+      if (isArchived(chat.id)) {
+        if (unread > 0) counts.archived += unread;
+        return;
+      }
       if (unread <= 0) return;
       counts.all += unread;
       const type = chat.type || (chat.is_channel ? "channel" : "dm");
@@ -816,7 +821,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
       }
     });
     return counts;
-  }, [chats]);
+  }, [chats, archivedChatIds]);
 
   const [showPollModal, setShowPollModal] = useState(false);
   const [isSecretChatModal, setIsSecretChatModal] = useState(false);
@@ -2300,6 +2305,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     activeChatTypeRef,
     activePeer,
     chatFolder,
+    archivedChatIds,
   });
   const activeHeaderAvatarIcon = isActiveSavedChat ? (
     <Bookmark size={18} className="text-white" />

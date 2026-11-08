@@ -4,12 +4,16 @@ export const ChatFolderTabs = memo(function ChatFolderTabs({
   currentFolder,
   onSelectFolder,
   counts = {},
+  hasArchived = false,
 }) {
   const folders = [
     { id: "all", label: "All", labelFa: "همه", count: counts.all },
     { id: "personal", label: "Direct", labelFa: "شخصی", count: counts.personal },
     { id: "groups", label: "Groups", labelFa: "گروه‌ها", count: counts.groups },
     { id: "channels", label: "Channels", labelFa: "کانال‌ها", count: counts.channels },
+    ...(hasArchived || currentFolder === "archived" || Number(counts.archived || 0) > 0
+      ? [{ id: "archived", label: "Archived", labelFa: "بایگانی", count: counts.archived }]
+      : []),
   ];
 
   return (

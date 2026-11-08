@@ -153,52 +153,13 @@ export default function ChatsListPanel({
     (Array.isArray(discoverChannels) && discoverChannels.length > 0) ||
     Boolean(discoverSaved);
 
-  const [activeCategory, setActiveCategory] = useState("all");
 
-  const categoryCounts = useMemo(() => {
-    const counts = { all: 0, dm: 0, group: 0, channel: 0, archive: 0 };
-    (visibleChats || []).forEach((c) => {
-      const unread = Number(c.unread_count || 0);
-      const isArchived = archivedChatIds.includes(c.id);
-      if (isArchived) {
-        counts.archive += unread;
-        return;
-      }
-      counts.all += unread;
-      if (c.type === "dm" || c.type === "saved" || c.type === "secret") {
-        counts.dm += unread;
-      } else if (c.type === "group") {
-        counts.group += unread;
-      } else if (c.type === "channel") {
-        counts.channel += unread;
-      }
-    });
-    return counts;
-  }, [visibleChats, archivedChatIds]);
-
-  const filteredVisibleChats = useMemo(() => {
-    if (activeCategory === "archive") {
-      return (visibleChats || []).filter((c) => archivedChatIds.includes(c.id));
-    }
-    const unarchived = (visibleChats || []).filter((c) => !archivedChatIds.includes(c.id));
-    if (activeCategory === "all") return unarchived;
-    if (activeCategory === "dm") {
-      return unarchived.filter((c) => c.type === "dm" || c.type === "saved" || c.type === "secret");
-    }
-    if (activeCategory === "group") {
-      return unarchived.filter((c) => c.type === "group");
-    }
-    if (activeCategory === "channel") {
-      return unarchived.filter((c) => c.type === "channel");
-    }
-    return unarchived;
-  }, [visibleChats, activeCategory, archivedChatIds]);
 
   const sidebarChats = useMemo(() => {
-    if (showSearchMode) return filteredVisibleChats;
+    if (showSearchMode) return visibleChats || [];
     const safeLimit = Math.max(SIDEBAR_INITIAL_RENDER, renderLimit);
-    return filteredVisibleChats.slice(0, safeLimit);
-  }, [filteredVisibleChats, renderLimit, showSearchMode]);
+    return (visibleChats || []).slice(0, safeLimit);
+  }, [visibleChats, renderLimit, showSearchMode]);
 
   useEffect(() => {
     if (showSearchMode) return;
@@ -242,46 +203,6 @@ export default function ChatsListPanel({
         showSearchMode || isEmptyState ? "min-h-full" : "w-full py-1"
       }
     >
-      {!showSearchMode && (
-        <div className="sticky top-0 z-20 px-2 py-1.5 mb-1 backdrop-blur-md bg-white/85 dark:bg-slate-900/85 border-b border-slate-200/50 dark:border-slate-800/60">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar p-0.5">
-            {[
-              { id: "all", label: "All", count: categoryCounts.all },
-              { id: "dm", label: "Direct", count: categoryCounts.dm },
-              { id: "group", label: "Groups", count: categoryCounts.group },
-              { id: "channel", label: "Channels", count: categoryCounts.channel },
-              { id: "archive", label: "Archived", count: categoryCounts.archive },
-            ].map((tab) => {
-              const isActive = activeCategory === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveCategory(tab.id)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-                    isActive
-                      ? "bg-emerald-500 text-white shadow-xs dark:bg-emerald-600 font-semibold"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  {tab.count > 0 && (
-                    <span
-                      className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                        isActive
-                          ? "bg-white text-emerald-700"
-                          : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                      }`}
-                    >
-                      {tab.count > 99 ? "99+" : tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
       {showSearchMode ? (
         <div
           className={
