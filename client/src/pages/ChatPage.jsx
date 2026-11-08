@@ -792,6 +792,31 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     }
   });
 
+  const [archivedChatIds, setArchivedChatIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("chakavak_archived_chats") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const handleToggleArchiveChat = useCallback((chatId) => {
+    if (!chatId) return;
+    setArchivedChatIds((prev) => {
+      const next = prev.includes(chatId)
+        ? prev.filter((id) => id !== chatId)
+        : [...prev, chatId];
+      try {
+        localStorage.setItem("chakavak_archived_chats", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const isChatArchived = useCallback((chatId) => {
+    return Boolean(chatId && archivedChatIds.includes(chatId));
+  }, [archivedChatIds]);
+
   const handleSelectChatFolder = useCallback((folder) => {
     setChatFolder(folder);
     try {
@@ -7451,30 +7476,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     return Boolean(message?.id && starredMessageIds.includes(message.id));
   }, [starredMessageIds]);
 
-  const [archivedChatIds, setArchivedChatIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chakavak_archived_chats") || "[]");
-    } catch {
-      return [];
-    }
-  });
 
-  const handleToggleArchiveChat = useCallback((chatId) => {
-    if (!chatId) return;
-    setArchivedChatIds((prev) => {
-      const next = prev.includes(chatId)
-        ? prev.filter((id) => id !== chatId)
-        : [...prev, chatId];
-      try {
-        localStorage.setItem("chakavak_archived_chats", JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  }, []);
-
-  const isChatArchived = useCallback((chatId) => {
-    return Boolean(chatId && archivedChatIds.includes(chatId));
-  }, [archivedChatIds]);
 
 
 

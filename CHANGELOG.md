@@ -10,6 +10,8 @@
   - Retained backward-compatible SVG wrappers for cached assets and updated asset loaders in `client/src/utils/videoBackground.js`.
 
 ### Fixed
+- **Resolve Initialization TDZ Error on ChatPage (`Cannot access 'cf' before initialization`)**:
+  - Moved `archivedChatIds` state and its helper callbacks to the top of `ChatPage.jsx` alongside `chatFolder`, resolving a Temporal Dead Zone (TDZ) ReferenceError triggered when `folderUnreadCounts` and `useActiveChatState` referenced the state prior to its lower-level declaration.
 - **Automated Deploy Menu Update & Version Banner Fix (بهینه‌سازی کامل بروزرسانی منو و رفع باگ نسخه در بنر سرور)**:
   - Streamlined option 2 in `scripts/install.sh` to prompt solely for update mode (`Online` vs `Offline`).
   - Completely automated the Online update workflow: fetches git repository, safely resets to `origin/main` (eliminating detached HEAD or divergent branch errors), installs dependencies, builds Vite client, synchronizes migrations, updates service units, restarts Chakavak/Worker services, and reloads Nginx without redundant confirmation prompts.
