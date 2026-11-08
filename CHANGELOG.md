@@ -1,3 +1,16 @@
+## 0.27.0 - 2026-11-08
+
+### Added
+- **Virtual Background Scenes for Video Calls (پس‌زمینه‌های مجازی تماس تصویری)**:
+  - Added 4 bundled SVG background scenes: Office (دفتر کار), Living Room (اتاق نشیمن), Library (کتابخانه), and Nature (طبیعت) in `client/public/backgrounds/`.
+  - Integrated into the existing MediaPipe Selfie Segmentation image pipeline in `client/src/utils/videoBackground.js`.
+  - Graceful fallback: keeps existing effect and surfaces clear error feedback if image loading fails.
+
+### Fixed
+- **Background Effect Menu & Error Visibility in Video Calls**:
+  - Prevented premature closing of background effect menu before segmentation model loads, ensuring load errors are surfaced cleanly to the user.
+  - Resolved controls row overflow and layout clipping in `CallScreen.jsx`.
+
 ## 0.26.0 - 2026-11-07
 
 ### Added
