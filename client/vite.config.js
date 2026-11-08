@@ -1,7 +1,12 @@
+import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
+
+const clientPkg = JSON.parse(
+  fs.readFileSync(new URL("./package.json", import.meta.url), "utf-8"),
+);
 
 export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, path.resolve(import.meta.dirname, ".."), "");
@@ -32,6 +37,9 @@ export default defineConfig(({ mode }) => {
     ],
     envDir: "..",
     envPrefix: ["APP_", "CHAT_", "FILE_", "MESSAGE_", "ACCOUNT_", "SIGN_"],
+    define: {
+      __APP_VERSION__: JSON.stringify(clientPkg.version),
+    },
     build: {
       chunkSizeWarningLimit: 800,
       rollupOptions: {

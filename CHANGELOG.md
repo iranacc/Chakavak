@@ -9,6 +9,12 @@
     - **Nature (طبیعت)**: Serene alpine terrace overlook with pine forests, majestic peaks, and sunny mountain horizon.
   - Retained backward-compatible SVG wrappers for cached assets and updated asset loaders in `client/src/utils/videoBackground.js`.
 
+### Fixed
+- **Dynamic Version Badge on Landing / Auth Page (نمایش پویا و خودکار نسخه برنامه در صفحه ورود)**:
+  - Replaced the hardcoded `v0.24.0` badge on `AuthPage.jsx` with dynamic runtime resolution.
+  - Injected `__APP_VERSION__` at build time in `client/vite.config.js` and `client/src/settings/appConfig.js`.
+  - Wired live version synchronization from `/api/app/info` through `App.jsx` and `AuthPage.jsx`, ensuring the version badge immediately reflects the running release across updates.
+
 ## 0.27.0 - 2026-11-08
 
 ### Added

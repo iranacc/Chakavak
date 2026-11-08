@@ -27,6 +27,7 @@ const readEnvBool = (key, fallback) => {
 };
 
 export const APP_CONFIG = {
+  appVersion: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "",
   // debugEnabled and accountCreationEnabled below are build-time defaults;
   // accountCreationEnabled is overridden live by App.jsx via setAppConfig()
   // once /api/app/info resolves (see setNameLimits.js pattern for why plain

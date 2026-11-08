@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Lock,
   PhoneCall,
@@ -20,6 +20,8 @@ import {
 } from "../icons/lucide.js";
 import { GithubIcon } from "../icons/BrandIcons.jsx";
 import chakavakLogo from "../assets/chakavak-logo.png";
+import { fetchAppInfo } from "../api/appMetaApi.js";
+import { APP_CONFIG } from "../settings/appConfig.js";
 
 export default function AuthPage({
   mode = "login",
@@ -33,6 +35,7 @@ export default function AuthPage({
   allowSignup = true,
   title,
   subtitle,
+  appVersion = "",
 }) {
   const isLogin = mode === "login";
   const canSignup = Boolean(allowSignup);
@@ -44,6 +47,33 @@ export default function AuthPage({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showMobileShowcase, setShowMobileShowcase] = useState(false);
+
+  const [liveVersion, setLiveVersion] = useState(
+    appVersion || APP_CONFIG.appVersion || "",
+  );
+
+  useEffect(() => {
+    if (appVersion) {
+      setLiveVersion(appVersion);
+      return;
+    }
+    let isMounted = true;
+    fetchAppInfo()
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data?.version) setLiveVersion(data.version);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [appVersion]);
+
+  const rawVersion = appVersion || liveVersion || APP_CONFIG.appVersion || "";
+  const displayVersion = rawVersion
+    ? (rawVersion.startsWith("v") ? rawVersion : `v${rawVersion}`)
+    : "";
 
   return (
     <div
@@ -70,9 +100,11 @@ export default function AuthPage({
                     <h1 className="text-3xl sm:text-4xl font-black tracking-normal bg-gradient-to-l from-emerald-600 via-teal-600 to-emerald-500 dark:from-emerald-400 dark:via-teal-300 dark:to-emerald-400 bg-clip-text text-transparent">
                       چکاوک
                     </h1>
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold font-mono">
-                      v0.24.0
-                    </span>
+                    {displayVersion ? (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold font-mono">
+                        {displayVersion}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 font-medium leading-relaxed">
                     پیام‌رسان امن، پرسرعت و همراه صمیمی شما

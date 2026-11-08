@@ -176,6 +176,7 @@ export default function App() {
     APP_CONFIG.accountCreationEnabled,
   )
   const [adminPanelEnabled, setAdminPanelEnabled] = useState(true)
+  const [appVersion, setAppVersion] = useState(APP_CONFIG.appVersion || '')
   const isStandaloneDisplay =
     window.matchMedia?.('(display-mode: standalone)')?.matches ||
     window.navigator?.standalone
@@ -718,6 +719,9 @@ export default function App() {
         if (typeof data?.adminPanelEnabled === 'boolean') {
           setAdminPanelEnabled(data.adminPanelEnabled)
         }
+        if (data?.version) {
+          setAppVersion(data.version)
+        }
         setNameLimits({
           nicknameMax: data?.nicknameMaxChars,
           usernameMax: data?.usernameMaxChars,
@@ -1016,6 +1020,7 @@ export default function App() {
                   loading={authLoading}
                   showSigningOverlay={authLoading}
                   allowSignup={accountCreationEnabled}
+                  appVersion={appVersion}
                 />
               )}
               {route === 'signup' && (
@@ -1032,6 +1037,7 @@ export default function App() {
                   loading={authLoading}
                   showSigningOverlay={false}
                   allowSignup={accountCreationEnabled}
+                  appVersion={appVersion}
                 />
               )}
               {user && (route === 'chat' || route === 'admin') ? (
