@@ -61,6 +61,22 @@ describe("videoBackground module", () => {
     pipeline.stop();
   });
 
+  it("rejects getSelfieSegmenter when the model fails to initialize so callers can revert", async () => {
+    class FailingSegmenter {
+      setOptions() {}
+      initialize() { return Promise.reject(new Error("model load failed")); }
+      onResults() {}
+    }
+    global.window = { SelfieSegmentation: FailingSegmenter };
+    global.document = { createElement: () => ({}), head: { appendChild: () => {} } };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const mod = await import("../../src/utils/videoBackground.js");
+
+    await expect(mod.getSelfieSegmenter()).rejects.toThrow("model load failed");
+    vi.restoreAllMocks();
+  });
+
   it("applies correct compositing order (mask stencil -> source-in -> destination-over blur)", async () => {
     let capturedOnResults = null;
     class MockSegmenter {

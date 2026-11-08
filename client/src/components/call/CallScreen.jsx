@@ -102,6 +102,7 @@ export const CallScreen = memo(function CallScreen({
   onSetVirtualBackground = null,
   backgroundEffect = "none",
   isBgProcessing = false,
+  backgroundError = null,
   minimized: controlledMinimized,
   onMinimizeChange,
 }) {
@@ -690,7 +691,7 @@ export const CallScreen = memo(function CallScreen({
   );
 
   const extraToolsRow = isConnected && isVideo ? (
-    <div className="flex items-center justify-center gap-2.5 sm:gap-3 p-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 max-w-[95vw] overflow-x-auto">
+    <div className="flex items-center justify-center gap-2.5 sm:gap-3 p-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/10 max-w-[95vw] flex-wrap">
       {/* Flip camera */}
       {!isCameraOff && onFlipCamera ? (
         <Tooltip label="چرخش دوربین / Flip camera">
@@ -734,9 +735,9 @@ export const CallScreen = memo(function CallScreen({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  onSetVirtualBackground("none");
-                  setBgMenuOpen(false);
+                onClick={async () => {
+                  const ok = await onSetVirtualBackground("none");
+                  if (ok !== false) setBgMenuOpen(false);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "none" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
@@ -747,9 +748,9 @@ export const CallScreen = memo(function CallScreen({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onSetVirtualBackground("blur");
-                  setBgMenuOpen(false);
+                onClick={async () => {
+                  const ok = await onSetVirtualBackground("blur");
+                  if (ok !== false) setBgMenuOpen(false);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "blur" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
@@ -760,9 +761,9 @@ export const CallScreen = memo(function CallScreen({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onSetVirtualBackground("deep-blur");
-                  setBgMenuOpen(false);
+                onClick={async () => {
+                  const ok = await onSetVirtualBackground("deep-blur");
+                  if (ok !== false) setBgMenuOpen(false);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition ${
                   backgroundEffect === "deep-blur" ? "bg-emerald-500/30 text-emerald-300 font-bold" : "hover:bg-white/10"
@@ -771,6 +772,9 @@ export const CallScreen = memo(function CallScreen({
                 <span>🌫️</span>
                 <span>مات شدید (Deep Blur)</span>
               </button>
+              {backgroundError ? (
+                <p role="alert" className="px-3 pt-1 text-[11px] leading-5 text-rose-300">{backgroundError}</p>
+              ) : null}
             </div>
           ) : null}
         </div>

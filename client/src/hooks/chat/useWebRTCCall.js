@@ -69,6 +69,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
   const [facingMode, setFacingMode] = useState("user");
   const [backgroundEffect, setBackgroundEffect] = useState("none"); // "none" | "blur" | "deep-blur" | "image"
   const [isBgProcessing, setIsBgProcessing] = useState(false);
+  const [backgroundError, setBackgroundError] = useState(null);
   const bgPipelineRef = useRef(null);
   const rawVideoElementRef = useRef(null);
   const rawCameraTrackRef = useRef(null);
@@ -969,18 +970,22 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         }
       }
       setBackgroundEffect("none");
-      return;
+      setBackgroundError(null);
+      return true;
     }
 
     try {
       setIsBgProcessing(true);
+      setBackgroundError(null);
       if (!rawTrack || rawTrack.readyState === "ended") {
         console.warn("No active camera track available for virtual background");
         setIsBgProcessing(false);
-        return;
+        return false;
       }
 
-      const { createVirtualBackgroundPipeline } = await import("../../utils/videoBackground.js");
+      const { createVirtualBackgroundPipeline, getSelfieSegmenter } = await import("../../utils/videoBackground.js");
+      // Load the model before touching the camera track. If it fails, the call keeps its current video and effect.
+      await getSelfieSegmenter();
 
       if (!rawVideoElementRef.current) {
         const rawVideo = document.createElement("video");
@@ -1024,7 +1029,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
       const [processedTrack] = bgPipelineRef.current.outputStream.getVideoTracks();
       if (!processedTrack) {
         setIsBgProcessing(false);
-        return;
+        return false;
       }
 
       const currentTracks = stream.getVideoTracks();
@@ -1063,8 +1068,11 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
         });
       }
       setBackgroundEffect(effect);
+      return true;
     } catch (err) {
       console.warn("Failed to apply virtual background:", err);
+      setBackgroundError("بارگذاری مدل مات‌سازی پس‌زمینه ناموفق بود. لطفاً دوباره تلاش کنید.");
+      return false;
     } finally {
       setIsBgProcessing(false);
     }
@@ -1351,6 +1359,7 @@ export function useWebRTCCall({ realtimeSenderRef } = {}) {
     isScreenSharing,
     backgroundEffect,
     isBgProcessing,
+    backgroundError,
     setVirtualBackground,
     handleSignal,
   };
