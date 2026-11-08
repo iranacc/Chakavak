@@ -1,5 +1,11 @@
 ## 0.27.1 - 2026-11-08
 
+### Added
+- **Direct Header Triggers & Live Notification Banner for Voice Stages (فعال‌سازی دکمه و بنر زنده دورهمی صوتی)**:
+  - Added dedicated header button (Radio icon) in groups and channels to initiate live audio rooms directly (startVoiceStage).
+  - Added interactive header pill and persistent banner above chat messages when a Voice Stage is active, allowing participants to join with one click (joinVoiceStage) and view live attendee count.
+  - Connected real-time status synchronization on chat selection (fetchChatVoiceStage) and initial load (fetchActiveVoiceStages).
+
 ### Changed
 - **Photorealistic Virtual Background Scenes for Video Calls (صحنه‌های پس‌زمینه مجازی واقع‌گرایانه تماس تصویری)**:
   - Replaced primitive cartoon vector placeholders with high-resolution 1080p photorealistic scenes featuring realistic depth, cinematic lighting, and natural optical bokeh:

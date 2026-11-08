@@ -150,6 +150,7 @@ export default function ChatWindowPanel({
   onStartVoiceCall,
   onStartVideoCall,
   onStartGroupConference = null,
+  connectedStage = null,
   callsDisabled = false,
   videoCallsDisabled = false,
   isInCall = false,
@@ -1318,18 +1319,62 @@ export default function ChatWindowPanel({
               >
                 <ArrowLeft size={18} />
               </button>
-              {isGroupChat && onStartGroupConference ? (
+              {(isGroupChat || isChannelChat) ? (
                 <div className="flex items-center gap-2">
-                  <Tooltip label="ویدئو کنفرانس گروهی / Group Conference" placement="bottom">
-                    <button
-                      type="button"
-                      onClick={onStartGroupConference}
-                      className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-emerald-400 bg-emerald-500/15 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 transition hover:bg-emerald-500/25 hover:shadow-[0_0_16px_rgba(16,185,129,0.3)] active:scale-95 cursor-pointer"
-                      aria-label="Group video conference"
-                    >
-                      <Users size={18} className="icon-anim-pop" />
-                    </button>
-                  </Tooltip>
+                  {isConnectedToVoiceStage ? (
+                    <Tooltip label="نمایش پنجره دورهمی صوتی فعال" placement="bottom">
+                      <button
+                        type="button"
+                        onClick={onOpenVoiceStage}
+                        className="inline-flex items-center gap-1.5 h-9 sm:h-10 px-3 rounded-full border border-emerald-400 bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600 active:scale-95 cursor-pointer animate-pulse"
+                        aria-label="نمایش دورهمی صوتی"
+                      >
+                        <Radio size={16} className="animate-spin-slow" />
+                        <span className="hidden sm:inline">در حال گفتگو</span>
+                      </button>
+                    </Tooltip>
+                  ) : activeVoiceStage ? (
+                    <Tooltip label="پیوستن به گفتگوی صوتی زنده (دورهمی)" placement="bottom">
+                      <button
+                        type="button"
+                        onClick={() => onJoinVoiceStage?.(activeChat?.id)}
+                        className="inline-flex items-center gap-1.5 h-9 sm:h-10 px-3 rounded-full border border-emerald-400 bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600 active:scale-95 cursor-pointer animate-pulse"
+                        aria-label="پیوستن به گفتگوی صوتی زنده"
+                      >
+                        <Radio size={16} className="animate-spin-slow" />
+                        <span className="hidden sm:inline">پیوستن</span>
+                        {Number(activeVoiceStage.participantCount || 0) > 0 && (
+                          <span className="bg-white/20 rounded-full px-1.5 py-0.5 text-[10px]">
+                            {activeVoiceStage.participantCount}
+                          </span>
+                        )}
+                      </button>
+                    </Tooltip>
+                  ) : onStartVoiceStage ? (
+                    <Tooltip label="شروع گفتگوی صوتی زنده (دورهمی) / Live Voice Stage" placement="bottom">
+                      <button
+                        type="button"
+                        onClick={() => onStartVoiceStage?.(activeChat?.id, activeChat?.title || activeChat?.name)}
+                        className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-emerald-400 bg-emerald-500/15 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 transition hover:bg-emerald-500/25 hover:shadow-[0_0_16px_rgba(16,185,129,0.3)] active:scale-95 cursor-pointer"
+                        aria-label="Start live voice stage"
+                      >
+                        <Radio size={18} className="icon-anim-pop" />
+                      </button>
+                    </Tooltip>
+                  ) : null}
+
+                  {isGroupChat && onStartGroupConference ? (
+                    <Tooltip label="ویدئو کنفرانس گروهی / Group Conference" placement="bottom">
+                      <button
+                        type="button"
+                        onClick={onStartGroupConference}
+                        className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-emerald-400 bg-emerald-500/15 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 transition hover:bg-emerald-500/25 hover:shadow-[0_0_16px_rgba(16,185,129,0.3)] active:scale-95 cursor-pointer"
+                        aria-label="Group video conference"
+                      >
+                        <Users size={18} className="icon-anim-pop" />
+                      </button>
+                    </Tooltip>
+                  ) : null}
                 </div>
               ) : null}
               {isDmChat && (onStartVoiceCall || onStartVideoCall) ? (
@@ -1755,6 +1800,27 @@ export default function ChatWindowPanel({
             aria-label="Close search"
           >
             <Close size={14} />
+          </button>
+        </div>
+      ) : null}
+
+      {activeVoiceStage && !isConnectedToVoiceStage ? (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20 backdrop-blur-md text-emerald-900 dark:text-emerald-100 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <p className="text-xs font-semibold truncate">
+              دورهمی و گفتگوی صوتی در جریان است ({Number(activeVoiceStage.participantCount || 0).toLocaleString("fa-IR")} نفر حاضر)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onJoinVoiceStage?.(activeChat?.id)}
+            className="shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-xs transition active:scale-95 cursor-pointer"
+          >
+            پیوستن به دورهمی
           </button>
         </div>
       ) : null}

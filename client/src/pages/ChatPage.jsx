@@ -1070,6 +1070,71 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     setConnectedStage(null);
     setVoiceStageModalOpen(false);
   }, [connectedStage]);
+
+  const handleStartVoiceStage = useCallback(async (chatId, title) => {
+    if (!chatId) return;
+    try {
+      const res = await startVoiceStage({
+        chatId,
+        title: title || "دورهمی و گفتگوی صوتی زنده",
+      });
+      if (res?.ok && res?.stage) {
+        setConnectedStage(res.stage);
+        setActiveVoiceStages((prev) => ({ ...prev, [chatId]: res.stage }));
+        setVoiceStageModalOpen(true);
+        setIsStageMuted(false);
+      }
+    } catch (err) {
+      console.error("Failed to start voice stage:", err);
+    }
+  }, []);
+
+  const handleJoinVoiceStage = useCallback(async (chatId) => {
+    if (!chatId) return;
+    try {
+      const res = await joinVoiceStage({ chatId });
+      if (res?.ok && res?.stage) {
+        setConnectedStage(res.stage);
+        setActiveVoiceStages((prev) => ({ ...prev, [chatId]: res.stage }));
+        setVoiceStageModalOpen(true);
+        setIsStageMuted(true);
+      }
+    } catch (err) {
+      console.error("Failed to join voice stage:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchActiveVoiceStages()
+      .then((res) => {
+        if (Array.isArray(res?.stages)) {
+          const map = {};
+          res.stages.forEach((st) => {
+            if (st?.chatId) map[st.chatId] = st;
+          });
+          setActiveVoiceStages(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    fetchChatVoiceStage(activeChatId)
+      .then((res) => {
+        if (res?.active && res?.stage) {
+          setActiveVoiceStages((prev) => ({ ...prev, [activeChatId]: res.stage }));
+        } else {
+          setActiveVoiceStages((prev) => {
+            if (!prev[activeChatId]) return prev;
+            const next = { ...prev };
+            delete next[activeChatId];
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+  }, [activeChatId]);
   const {
     chatsSearchQuery,
     setChatsSearchQuery,
@@ -8107,6 +8172,12 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
         onStartVoiceCall={handleStartVoiceCall}
         onStartVideoCall={handleStartVideoCall}
         onStartGroupConference={() => setGroupConferenceOpen(true)}
+        onStartVoiceStage={handleStartVoiceStage}
+        onJoinVoiceStage={handleJoinVoiceStage}
+        activeVoiceStage={activeChat?.id ? activeVoiceStages[activeChat.id] : null}
+        connectedStage={connectedStage}
+        isConnectedToVoiceStage={Boolean(connectedStage && connectedStage.chatId === activeChat?.id)}
+        onOpenVoiceStage={() => setVoiceStageModalOpen(true)}
         callsDisabled={!CHAT_PAGE_CONFIG.callsEnabled}
         videoCallsDisabled={!CHAT_PAGE_CONFIG.videoCallsEnabled}
         isInCall={callState !== "idle"}
