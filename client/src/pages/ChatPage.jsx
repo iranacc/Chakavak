@@ -1398,6 +1398,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
     isScreenSharing,
     backgroundEffect,
     isBgProcessing,
+    backgroundError,
     setVirtualBackground,
     handleSignal: handleCallSignal,
   } = useWebRTCCall({ realtimeSenderRef });
@@ -8162,6 +8163,7 @@ export default function ChatPage({ user, setUser, isDark, setIsDark, toggleTheme
           isScreenSharing={isScreenSharing}
           backgroundEffect={backgroundEffect}
           isBgProcessing={isBgProcessing}
+          backgroundError={backgroundError}
           onSetVirtualBackground={setVirtualBackground}
         />
       ) : null}
