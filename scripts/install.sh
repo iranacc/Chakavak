@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chakavak-deploy-version: 0.25.2
+# chakavak-deploy-version: 0.27.1
 
 set -uo pipefail
 
@@ -185,6 +185,7 @@ read_script_version_header() {
   fi
   local header=""
   header="$(grep -E '^# (chakavak|songbird)-deploy-version:' "$file_path" | head -n 1 | cut -d ':' -f 2- | xargs || true)"
+  header="$(printf "%s" "$header" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-zA-Z0-9.]+)?' | head -n 1 || true)"
   if [[ -z "$header" || "$header" == "auto" ]]; then
     return 1
   fi
@@ -193,13 +194,8 @@ read_script_version_header() {
 
 resolve_script_version_for_path() {
   local script_path="$1"
-  local header_version=""
-  header_version="$(read_script_version_header "$script_path" 2>/dev/null || true)"
-  if [[ -n "$header_version" ]]; then
-    printf "%s" "$header_version"
-    return 0
-  fi
 
+  # 1. Check repository root VERSION file
   local script_dir=""
   script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd -P 2>/dev/null || true)"
   local repo_root=""
@@ -207,21 +203,42 @@ resolve_script_version_for_path() {
     repo_root="$(cd -- "$script_dir/.." && pwd -P 2>/dev/null || true)"
   fi
   if [[ -n "$repo_root" && -f "$repo_root/VERSION" ]]; then
-    read_version_file_value "$repo_root/VERSION"
-    return $?
+    local v=""
+    v="$(read_version_file_value "$repo_root/VERSION" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then
+      printf "%s" "$v"
+      return 0
+    fi
   fi
 
+  # 2. Check install directory VERSION file
   if [[ -f "$INSTALL_DIR/VERSION" ]]; then
-    read_version_file_value "$INSTALL_DIR/VERSION"
-    return $?
+    local v=""
+    v="$(read_version_file_value "$INSTALL_DIR/VERSION" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then
+      printf "%s" "$v"
+      return 0
+    fi
+  fi
+
+  # 3. Check embedded script header
+  local header_version=""
+  header_version="$(read_script_version_header "$script_path" 2>/dev/null || true)"
+  if [[ -n "$header_version" ]]; then
+    printf "%s" "$header_version"
+    return 0
   fi
 
   return 1
 }
 
 CURRENT_SCRIPT_PATH="$(resolve_current_script_path 2>/dev/null || true)"
-SCRIPT_VERSION="$(extract_script_version "$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.25.2")"
+SCRIPT_VERSION="$(resolve_script_version_for_path "$CURRENT_SCRIPT_PATH" 2>/dev/null || printf "0.27.1")"
 LAST_GLOBAL_COMMAND_VERSION=""
+
+extract_script_version() {
+  resolve_script_version_for_path "$@"
+}
 
 log() {
   local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -3720,17 +3737,31 @@ update_chakavak() {
     return 0
   fi
 
-  ensure_chakavak_stopped_for_update || return 1
+  local update_mode=""
+  while true; do
+    printf "\n%bChakavak Update Mode%b\n" "$COLOR_LOG" "$COLOR_RESET"
+    printf "  1) 🌐 Online (Auto update from GitHub)\n"
+    printf "  2) 📦 Offline (Local zip package)\n"
+    printf "  0) ↩️  Cancel / Go back\n"
+    prompt_read "Choose an option [0-2] (Default: 1): " update_mode
+    update_mode="${update_mode#"${update_mode%%[![:space:]]*}"}"
+    update_mode="${update_mode%"${update_mode##*[![:space:]]}"}"
+    if [[ -z "$update_mode" || "$update_mode" == "1" || "$update_mode" =~ ^[Oo]nline$ ]]; then
+      update_mode="online"
+      break
+    elif [[ "$update_mode" == "2" || "$update_mode" =~ ^[Oo]ffline$ ]]; then
+      update_mode="offline"
+      break
+    elif [[ "$update_mode" == "0" || "$update_mode" =~ ^[Cc]ancel$ ]]; then
+      log "Update canceled."
+      press_enter_to_continue
+      return 0
+    else
+      printf "Invalid choice. Please select 1 for Online, 2 for Offline, or 0 to Cancel.\n"
+    fi
+  done
 
-  if [[ "$(prompt_yes_no "Create a database backup before updating?" "no")" == "yes" ]]; then
-    backup_database || return 1
-  else
-    log "Skipping pre-update backup."
-  fi
-
-  prompt_source_mode
-
-  if [[ "$SOURCE_MODE" == "offline" ]]; then
+  if [[ "$update_mode" == "offline" ]]; then
     ensure_offline_source_ready "update" || return 0
 
     local offline_zip_path="$SOURCE_ZIP_PATH"
@@ -3740,59 +3771,17 @@ update_chakavak() {
     local source_root="${extract_result#*|}"
 
     local source_ver=""
-    local install_ver=""
-    source_ver="$(read_version_value "$source_root/VERSION")" || source_ver=""
-    install_ver="$(read_version_value "$INSTALL_DIR/VERSION")" || install_ver=""
-
-    local is_downgrade="no"
-    local version_rel=""
-    if ! compare_offline_source_version "$source_root" "$INSTALL_DIR" version_rel; then
-      run_silent run_as_root rm -rf "$tmp_dir"
-      press_enter_to_continue
-      return 0
-    fi
-
-    case "$version_rel" in
-      newer)
-        log "Offline update available. Preparing to update Chakavak..."
-        ;;
-      lower)
-        local should_downgrade=""
-        should_downgrade="$(prompt_yes_no "Local zip version (${source_ver}) is lower than installed version (${install_ver}). Do you want to downgrade to version ${source_ver}?" "no")"
-        if [[ "$should_downgrade" != "yes" ]]; then
-          run_silent run_as_root rm -rf "$tmp_dir"
-          log "Chakavak is already up to date. No rebuild needed."
-          press_enter_to_continue
-          return 0
-        fi
-        is_downgrade="yes"
-        log "Offline downgrade requested. Preparing to downgrade Chakavak to ${source_ver}..."
-        ;;
-      same)
-        local should_update=""
-        should_update="$(prompt_yes_no "Local zip version (${source_ver}) is the same as installed version (${install_ver}). Do you want to update to version ${source_ver}?" "no")"
-        if [[ "$should_update" != "yes" ]]; then
-          run_silent run_as_root rm -rf "$tmp_dir"
-          log "Chakavak is already up to date. No rebuild needed."
-          press_enter_to_continue
-          return 0
-        fi
-        log "Offline update requested. Preparing to update Chakavak to ${source_ver}..."
-        ;;
-      *)
-        run_silent run_as_root rm -rf "$tmp_dir"
-        log "Chakavak is already up to date. No rebuild needed."
-        press_enter_to_continue
-        return 0
-        ;;
-    esac
-
+    source_ver="$(read_version_value "$source_root/VERSION" 2>/dev/null || true)"
     run_silent run_as_root rm -rf "$tmp_dir"
 
+    log "Preparing offline update to version ${source_ver:-latest}..."
     preserve_backup_and_restore_data
     update_source_from_zip "$offline_zip_path" || return 1
 
-    log "Installing dependencies..."
+    log "Stopping service before installing dependencies and migrations..."
+    ensure_chakavak_stopped_for_update || true
+
+    log "Installing dependencies and building client..."
     install_chakavak_dependencies || return 1
     ensure_vapid_keys || return 1
 
@@ -3807,10 +3796,10 @@ update_chakavak() {
       warn "Failed to synchronize global command after update."
     fi
 
-    # Unit files are fully generated: refresh them on every update.
     if have_cmd systemctl && [[ -f "$SERVICE_FILE" ]]; then
       log "Refreshing systemd services..."
       configure_systemd_service || true
+      run_as_root systemctl daemon-reload || true
     fi
 
     log "Restarting Chakavak service..."
@@ -3829,118 +3818,77 @@ update_chakavak() {
     return 0
   fi
 
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    :
-  else
-    warn "No git checkout found at ${INSTALL_DIR}. Update requires GitHub mode."
+  # Online Update Workflow (Fully automated)
+  log "Starting automated online update for Chakavak..."
+
+  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+    warn "No git repository found at ${INSTALL_DIR}. Online update requires a git-managed installation."
     press_enter_to_continue
-    return 0
+    return 1
   fi
 
-  # Fetch latest from remote
-  log "Checking for updates..."
+  log "1/7: Fetching latest updates and release tags from GitHub..."
   if ! run_in_install_dir "git fetch --all --prune --tags --force"; then
-    warn "Failed to fetch from remote. Check your network and credentials."
+    warn "Failed to fetch from GitHub. Please check server internet connectivity."
     press_enter_to_continue
     return 1
   fi
 
-  # Get local and remote commit hashes
-  local local_commit remote_commit
-  local_commit="$(run_in_install_dir_output "git rev-parse HEAD" | tr -d '\r\n')"
-  remote_commit="$(run_in_install_dir_output "git rev-parse origin/main" | tr -d '\r\n')"
-
-  if [[ -z "$local_commit" || -z "$remote_commit" ]]; then
-    warn "Failed to determine current version. Check git repository status."
+  log "2/7: Synchronizing repository with origin/main..."
+  if ! run_in_install_dir "git checkout -B main origin/main"; then
+    warn "Failed to checkout main branch."
+    press_enter_to_continue
+    return 1
+  fi
+  if ! run_in_install_dir "git reset --hard origin/main"; then
+    warn "Failed to reset repository to origin/main."
     press_enter_to_continue
     return 1
   fi
 
-  local is_downgrade="no"
-  local target_ref="main"
-  local target_version=""
+  log "3/7: Stopping services temporarily for safe update..."
+  ensure_chakavak_stopped_for_update || true
 
-  # Check if update is available
-  if [[ "$local_commit" == "$remote_commit" ]]; then
-    log "Chakavak is already up to date."
-    local should_downgrade=""
-    should_downgrade="$(prompt_yes_no "Do you want to downgrade?" "no")"
-    if [[ "$should_downgrade" != "yes" ]]; then
-      log "No rebuild needed."
-      press_enter_to_continue
-      return 0
-    fi
+  log "4/7: Installing dependencies and building client application..."
+  install_chakavak_dependencies || {
+    warn "Failed to install dependencies or build client."
+    press_enter_to_continue
+    return 1
+  }
+  ensure_vapid_keys || {
+    warn "Failed to verify VAPID keys."
+    press_enter_to_continue
+    return 1
+  }
 
-    prompt_read "Enter version number to install: " target_version
-    target_version="$(sanitize_input_value "$target_version")"
+  log "5/7: Synchronizing database schema (migrations)..."
+  run_migrations || {
+    warn "Database migrations failed."
+    press_enter_to_continue
+    return 1
+  }
 
-    if [[ -z "$target_version" ]]; then
-      warn "No version specified. Downgrade canceled."
-      press_enter_to_continue
-      return 0
-    fi
-
-    target_ref="$(resolve_git_version_ref "$target_version")" || target_ref=""
-    if [[ -z "$target_ref" ]]; then
-      warn "Version '${target_version}' not found in repository."
-      press_enter_to_continue
-      return 1
-    fi
-
-    is_downgrade="yes"
-  fi
-
-  if [[ "$is_downgrade" == "yes" ]]; then
-    log "Downgrade requested. Preparing to downgrade Chakavak to ${target_version}..."
-    preserve_backup_and_restore_data
-
-    if ! run_in_install_dir "git checkout ${target_ref}"; then
-      warn "Failed to checkout ${target_version}."
-      press_enter_to_continue
-      return 1
-    fi
-  else
-    # Update is available - proceed with safe update
-    log "Update available. Preparing to update Chakavak..."
-    preserve_backup_and_restore_data
-
-    # Ensure we're on main branch and pull latest
-    if ! run_in_install_dir "git checkout main"; then
-      warn "Failed to checkout main branch."
-      press_enter_to_continue
-      return 1
-    fi
-
-    if ! run_in_install_dir "git pull --ff-only origin main"; then
-      warn "Failed to pull updates. Repository may have non-fast-forward changes."
-      press_enter_to_continue
-      return 1
-    fi
-  fi
-
-  log "Installing dependencies..."
-  install_chakavak_dependencies || return 1
-  ensure_vapid_keys || return 1
-  
-  log "Synchronizing database schema with latest version..."
-  run_migrations || return 1
-
+  log "6/7: Updating service user permissions and global menu command..."
   ensure_service_user_exists || return 1
   apply_ownership || return 1
   if install_global_command_from_path "$INSTALL_DIR/scripts/install.sh"; then
-    log "Global command synchronized from updated install script."
+    log "Global CLI command (/usr/local/bin/chakavak) updated successfully."
   else
     warn "Failed to synchronize global command after update."
   fi
 
-  # Unit files are fully generated: refresh them on every update.
+  log "7/7: Refreshing systemd services and restarting Chakavak..."
   if have_cmd systemctl && [[ -f "$SERVICE_FILE" ]]; then
-    log "Refreshing systemd services..."
     configure_systemd_service || true
+    run_as_root systemctl daemon-reload || true
   fi
 
-  log "Restarting Chakavak service..."
-  run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || return 1
+  run_as_root systemctl restart "${SERVICE_NAME}.service" 2>/dev/null || run_as_root systemctl restart songbird.service || {
+    warn "Failed to restart Chakavak service."
+    press_enter_to_continue
+    return 1
+  }
+
   if have_cmd systemctl; then
     if systemctl list-unit-files | grep -q "^${WORKER_SERVICE_NAME}.service"; then
       run_as_root systemctl restart "${WORKER_SERVICE_NAME}.service" || true
@@ -3948,10 +3896,15 @@ update_chakavak() {
       run_as_root systemctl restart songbird-worker.service || true
     fi
   fi
-  run_as_root systemctl reload nginx || return 1
 
+  run_as_root systemctl reload nginx 2>/dev/null || run_as_root systemctl restart nginx || true
+
+  local new_version=""
+  new_version="$(read_version_value "$INSTALL_DIR/VERSION" 2>/dev/null || printf "latest")"
+  log "Chakavak has been successfully updated to version v${new_version}!"
   show_deployment_success_frame "update"
   press_enter_to_continue
+  return 0
 }
 
 restart_chakavak() {
@@ -4291,7 +4244,7 @@ install_global_command_from_path() {
     return 1
   }
 
-  if ! sed -i "1s|^# .*deploy-version:.*$|# chakavak-deploy-version: ${install_version}|" "$temp_target"; then
+  if ! sed -i -E "1,5s|^# .*deploy-version:.*$|# chakavak-deploy-version: ${install_version}|" "$temp_target"; then
     rm -f "$temp_target"
     return 1
   fi
@@ -4323,7 +4276,7 @@ install_global_command_from_remote() {
     rm -f "$temp_target"
     return 1
   fi
-  if ! sed -i "1s|^# .*deploy-version:.*$|# chakavak-deploy-version: ${install_version}|" "$temp_target"; then
+  if ! sed -i -E "1,5s|^# .*deploy-version:.*$|# chakavak-deploy-version: ${install_version}|" "$temp_target"; then
     rm -f "$temp_target"
     return 1
   fi
@@ -4449,6 +4402,7 @@ install_global_command() {
 installed_global_command_version() {
   local version=""
   version="$(run_as_root bash -lc "if [[ -f '$GLOBAL_COMMAND_PATH' ]]; then grep -E '^# (chakavak|songbird)-deploy-version:' '$GLOBAL_COMMAND_PATH' | head -n 1 | cut -d ':' -f 2- | xargs; fi" 2>/dev/null || true)"
+  version="$(printf "%s" "$version" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-zA-Z0-9.]+)?' | head -n 1 || true)"
   if [[ -z "$version" || "$version" == "auto" ]]; then
     return 1
   fi

@@ -10,6 +10,11 @@
   - Retained backward-compatible SVG wrappers for cached assets and updated asset loaders in `client/src/utils/videoBackground.js`.
 
 ### Fixed
+- **Automated Deploy Menu Update & Version Banner Fix (بهینه‌سازی کامل بروزرسانی منو و رفع باگ نسخه در بنر سرور)**:
+  - Streamlined option 2 in `scripts/install.sh` to prompt solely for update mode (`Online` vs `Offline`).
+  - Completely automated the Online update workflow: fetches git repository, safely resets to `origin/main` (eliminating detached HEAD or divergent branch errors), installs dependencies, builds Vite client, synchronizes migrations, updates service units, restarts Chakavak/Worker services, and reloads Nginx without redundant confirmation prompts.
+  - Resolved malformed script version banner string (`Script Version: 0.22.0/usr/...`) by sanitizing extracted semantic version numbers and prioritizing the authoritative root `VERSION` file.
+  - Fixed `sed` range in `install_global_command_from_path` to ensure line 2 version stamping in `/usr/local/bin/chakavak` is applied reliably on every update.
 - **Duplicate Chat Tabs Removal & Creation Menu Clipping Fix (حذف سطر تب تکراری و رفع بریدگی منوی ساخت گفتگو)**:
   - Eliminated the redundant internal category tab bar in `ChatsListPanel.jsx` that was conflicting with `ChatFolderTabs.jsx` and causing duplicate rows and confusing empty states.
   - Unified chat folder filtering with support for archived chats in `ChatFolderTabs.jsx` and `useActiveChatState.js`.
