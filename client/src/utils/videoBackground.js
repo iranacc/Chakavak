@@ -50,10 +50,10 @@ export async function getSelfieSegmenter() {
 
 /** Built-in scene backgrounds: effect id → image URL in `client/public/backgrounds`. */
 export const BACKGROUND_SCENE_SRC = {
-  "scene-office": "/backgrounds/office.svg",
-  "scene-living-room": "/backgrounds/living-room.svg",
-  "scene-library": "/backgrounds/library.svg",
-  "scene-nature": "/backgrounds/nature.svg",
+  "scene-office": "/backgrounds/office.jpg",
+  "scene-living-room": "/backgrounds/living-room.jpg",
+  "scene-library": "/backgrounds/library.jpg",
+  "scene-nature": "/backgrounds/nature.jpg",
 };
 
 /**

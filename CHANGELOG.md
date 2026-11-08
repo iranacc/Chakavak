@@ -1,3 +1,14 @@
+## 0.27.1 - 2026-11-08
+
+### Changed
+- **Photorealistic Virtual Background Scenes for Video Calls (صحنه‌های پس‌زمینه مجازی واقع‌گرایانه تماس تصویری)**:
+  - Replaced primitive cartoon vector placeholders with high-resolution 1080p photorealistic scenes featuring realistic depth, cinematic lighting, and natural optical bokeh:
+    - **Office (دفتر کار)**: Executive modern workspace with panoramic skyline, wood accents, and soft atmospheric bokeh.
+    - **Library (کتابخانه)**: Warm mahogany bookshelf study with ambient golden reading lamps and warm wood textures.
+    - **Living Room (اتاق نشیمن)**: Clean Scandinavian interior with indoor houseplants, soft daylight, and neutral tones.
+    - **Nature (طبیعت)**: Serene alpine terrace overlook with pine forests, majestic peaks, and sunny mountain horizon.
+  - Retained backward-compatible SVG wrappers for cached assets and updated asset loaders in `client/src/utils/videoBackground.js`.
+
 ## 0.27.0 - 2026-11-08
 
 ### Added
