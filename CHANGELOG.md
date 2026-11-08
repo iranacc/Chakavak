@@ -1,4 +1,4 @@
-## 0.27.1 - 2026-11-08
+## 0.28.0 - 2026-11-08
 
 ### Added
 - **Direct Header Triggers & Live Notification Banner for Voice Stages (فعال‌سازی دکمه و بنر زنده دورهمی صوتی)**:
