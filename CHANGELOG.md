@@ -1,3 +1,11 @@
+## 0.28.1 - 2026-11-08
+
+### Fixed
+- **Voice Stage Runtime ReferenceError Fix (رفع خطای VoiceStageBanner is not defined هنگام شروع گفتگوی صوتی)**:
+  - Added missing `VoiceStageBanner` component import in `ChatWindowPanel.jsx`.
+  - Removed duplicate inline voice stage banner in `ChatWindowPanel.jsx` to eliminate UI redundancy.
+  - Ensured `onJoin` callback in both `ChatWindowPanel.jsx` and `VoiceStageBanner.jsx` safely passes the active `chatId` parameter rather than the raw event object.
+
 ## 0.28.0 - 2026-11-08
 
 ### Added

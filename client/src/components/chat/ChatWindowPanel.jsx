@@ -39,6 +39,7 @@ import {
   useFloatingDayChip,
 } from "./index.js";
 import PinnedMessageBar from "./pinned/PinnedMessageBar.jsx";
+import { VoiceStageBanner } from "../call/VoiceStageBanner.jsx";
 import ContextMenuSurface from "../context-menu/ContextMenuSurface.jsx";
 import { CACHE_STORES } from "../../utils/cacheDb.js";
 import {
@@ -1804,27 +1805,6 @@ export default function ChatWindowPanel({
         </div>
       ) : null}
 
-      {activeVoiceStage && !isConnectedToVoiceStage ? (
-        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20 backdrop-blur-md text-emerald-900 dark:text-emerald-100 animate-in fade-in duration-200">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <p className="text-xs font-semibold truncate">
-              دورهمی و گفتگوی صوتی در جریان است ({Number(activeVoiceStage.participantCount || 0).toLocaleString("fa-IR")} نفر حاضر)
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onJoinVoiceStage?.(activeChat?.id)}
-            className="shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-xs transition active:scale-95 cursor-pointer"
-          >
-            پیوستن به دورهمی
-          </button>
-        </div>
-      ) : null}
-
       {pinnedMessage ? (
         <PinnedMessageBar
           pinnedMessage={pinnedMessage}
@@ -1837,7 +1817,7 @@ export default function ChatWindowPanel({
         <VoiceStageBanner
           stage={activeVoiceStage}
           isConnectedToThisStage={isConnectedToVoiceStage}
-          onJoin={onJoinVoiceStage}
+          onJoin={() => onJoinVoiceStage?.(activeChat?.id)}
           onOpenStage={onOpenVoiceStage}
         />
       ) : null}

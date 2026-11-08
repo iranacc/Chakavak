@@ -65,7 +65,7 @@ export const VoiceStageBanner = memo(function VoiceStageBanner({
         ) : (
           <button
             type="button"
-            onClick={onJoin}
+            onClick={() => onJoin?.(stage.chatId)}
             className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-500 transition active:scale-95"
           >
             <Radio size={14} />
